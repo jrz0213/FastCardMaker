@@ -13,7 +13,7 @@ def started(profile):
     provider = profile.get('provider', 'custom')
     if provider not in ('openai', 'deepseek', 'gemini', 'claude', 'qwen', 'custom'):
         provider = 'custom'
-    mode = 'responses' if profile.get('mode') == 'responses' else 'chat'
+    mode = profile.get('mode') if profile.get('mode') in ('responses', 'chat', 'messages', 'interactions') else 'unknown'
     skill = profile.get('skill', '')
     logger.info('[AI] request=%s start provider=%s mode=%s skill=%s',
                 _request_id.get(), provider, mode, isinstance(skill, str) and bool(skill.strip()))
@@ -47,7 +47,7 @@ def usage(data, mode):
     def count(mapping, name):
         result = mapping.get(name) if isinstance(mapping, dict) else None
         return result if type(result) is int and result >= 0 else None
-    response = mode == 'responses'
+    response = mode in ('responses', 'messages')
     input_key, output_key = ('input_tokens', 'output_tokens') if response else ('prompt_tokens', 'completion_tokens')
     input_details = value.get('input_tokens_details' if response else 'prompt_tokens_details', {})
     output_details = value.get('output_tokens_details' if response else 'completion_tokens_details', {})
@@ -57,6 +57,9 @@ def usage(data, mode):
     tokens = dict(input=count(value, input_key), output=count(value, output_key),
                   total=count(value, 'total_tokens'), cached=cached,
                   reasoning=count(output_details, 'reasoning_tokens'))
+    if mode == 'interactions':
+        tokens.update(input=count(value, 'total_input_tokens'), output=count(value, 'total_output_tokens'),
+                      cached=count(value, 'total_cached_tokens'), reasoning=count(value, 'total_thought_tokens'))
     logger.info('[AI] request=%s tokens input=%s output=%s total=%s cached=%s reasoning=%s',
                 _request_id.get(), *(number if number is not None else 'unavailable' for number in tokens.values()))
     return tokens

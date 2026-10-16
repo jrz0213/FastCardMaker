@@ -11,6 +11,68 @@ import test_modularization as support
 
 
 class AITests(unittest.TestCase):
+    def test_endpoint_selects_protocol_even_when_legacy_mode_disagrees(self):
+        params = self.load('service.ai_support.parameters')
+        for suffix, mode in [('responses', 'responses'), ('chat/completions', 'chat'),
+                             ('interactions', 'interactions'), ('messages', 'messages')]:
+            profile = dict(self.profile, base_url='https://example.test/v1/' + suffix, mode='outdated')
+            self.assertEqual(params.protocol(profile), mode)
+            profile['model'] = 'test'
+            self.settings.validate_profile(profile)
+        with self.assertRaises(ValueError):
+            params.protocol(dict(self.profile, base_url='https://example.test/unknown'))
+
+    def test_native_protocols_preserve_skill_history_and_extract_only_final_text(self):
+        ai = self.load('service.ai')
+        history = [{'role': 'user', 'content': 'first question'}, {'role': 'assistant', 'content': 'first answer'}]
+        gemini = self.settings.new_profile('gemini')
+        gemini.update(model='gemini-test', skill='shared instruction')
+        payload = ai.request_payload(gemini, 'follow up', history=history)
+        self.assertFalse(payload['store'])
+        self.assertEqual(payload['system_instruction'], gemini['skill'])
+        for text in ('first question', 'first answer', 'follow up'):
+            self.assertIn(text, payload['input'])
+        self.assertNotIn('reasoning', payload)
+        reply = {'status': 'completed', 'steps': [
+            {'type': 'thought', 'content': [{'type': 'text', 'text': 'private thought'}]},
+            {'type': 'model_output', 'content': [{'type': 'text', 'text': 'answer'}]}]}
+        self.assertEqual(ai.response_text(reply, 'interactions'), 'answer')
+        reply['status'] = 'incomplete'
+        with self.assertRaises(ai.AIError):
+            ai.response_text(reply, 'interactions')
+        claude = self.settings.new_profile('claude')
+        claude.update(model='claude-test', skill='instruction')
+        payload = ai.request_payload(claude, 'follow up', history=history)
+        self.assertEqual(payload['messages'][:-1], history)
+        self.assertEqual(payload['system'], 'instruction')
+        self.assertGreater(payload['max_tokens'], 0)
+        reply = {'type': 'message', 'stop_reason': 'end_turn', 'content': [
+            {'type': 'thinking', 'thinking': 'private thought'}, {'type': 'text', 'text': 'answer'}]}
+        self.assertEqual(ai.response_text(reply, 'messages'), 'answer')
+        reply['stop_reason'] = 'max_tokens'
+        with self.assertRaises(ai.AIError):
+            ai.response_text(reply, 'messages')
+
+    def test_native_http_authentication_matches_endpoint_not_provider_label(self):
+        ai = self.load('service.ai')
+        for provider, header, body in [
+            ('gemini', 'x-goog-api-key', {'status': 'completed', 'steps': [
+                {'type': 'model_output', 'content': [{'type': 'text', 'text': 'ok'}]}]}),
+            ('claude', 'x-api-key', {'type': 'message', 'stop_reason': 'end_turn',
+                                    'content': [{'type': 'text', 'text': 'ok'}]})]:
+            profile = self.settings.new_profile(provider)
+            profile.update(model='test', provider='custom', skill='')
+            connection = ai.AIConnection(profile, 'test-key')
+            response = Mock(status_code=200)
+            response.json.return_value = body
+            with patch.object(ai, '_send', return_value=response) as send:
+                self.assertEqual(ai.request_ai_text('unused', 'prompt', '', connection=connection), 'ok')
+            headers = send.call_args.args[1]
+            self.assertEqual(headers[header], 'test-key')
+            self.assertNotIn('Authorization', headers)
+            if provider == 'claude':
+                self.assertEqual(headers['anthropic-version'], '2023-06-01')
+
     def test_free_json_fragments_validate_and_merge_without_changing_prompt(self):
         ai = self.load('service.ai')
         params = self.load('service.ai_support.parameters')
@@ -63,10 +125,10 @@ class AITests(unittest.TestCase):
         self.assertEqual(self.profile['temperature'], 1)
         self.assertEqual(self.profile['reasoning'], 'none')
         self.assertNotIn('max_tokens', self.profile)
-        for provider in ('openai', 'deepseek', 'custom'):
+        for provider in ('openai', 'deepseek', 'qwen', 'custom'):
             self.assertEqual(self.settings.new_profile(provider)['mode'], 'responses')
-        for provider in ('gemini', 'claude', 'qwen'):
-            self.assertEqual(self.settings.new_profile(provider)['mode'], 'chat')
+        self.assertEqual(self.settings.new_profile('gemini')['mode'], 'interactions')
+        self.assertEqual(self.settings.new_profile('claude')['mode'], 'messages')
 
     def test_keys_persist_separately_and_reload_after_restart(self):
         self.profile['api_key'] = 'must-not-save'
@@ -152,7 +214,7 @@ class AITests(unittest.TestCase):
         self.assertEqual(payload['reasoning'], {'effort': 'low'})
         self.assertFalse(payload['store'])
         self.assertNotIn('temperature', payload)
-        self.profile['mode'] = 'chat'
+        self.profile.update(mode='chat', base_url='https://example.test/chat/completions')
         self.profile['parameters'] = {'reasoning_effort': 'low'}
         payload = ai.request_payload(self.profile, 'Explain hello')
         self.assertEqual(payload['messages'][0]['content'], 'Explain hello')
@@ -166,7 +228,7 @@ class AITests(unittest.TestCase):
         self.assertEqual(payload['instructions'], self.profile['skill'])
         self.assertEqual(payload['input'], '解释 apple')
         self.assertFalse(payload['store'])
-        self.profile.update(mode='chat', model='gpt-6-luna')
+        self.profile.update(mode='chat', model='gpt-6-luna', base_url='https://example.test/chat/completions')
         payload = ai.request_payload(self.profile, '解释 apple')
         self.assertEqual(payload['messages'][0], {'role': 'system', 'content': self.profile['skill']})
         self.assertEqual(payload['messages'][1], {'role': 'user', 'content': '解释 apple'})
@@ -183,7 +245,7 @@ class AITests(unittest.TestCase):
         self.assertTrue(ai.request_payload(self.profile, 'hi')['store'])
         self.profile['provider'] = 'deepseek'
         self.assertTrue(ai.request_payload(self.profile, 'hi')['store'])
-        self.profile['mode'] = 'chat'
+        self.profile.update(mode='chat', base_url='https://example.test/chat/completions')
         payload = ai.request_payload(self.profile, 'hi')
         self.assertEqual(len(payload['messages']), 1)
         self.assertNotIn('store', payload)
@@ -278,7 +340,7 @@ class AITests(unittest.TestCase):
             ('claude', 'chat', 'thinking', {'type': 'disabled'}),
             ('gemini', 'chat', 'reasoning_effort', 'none')):
             profile = self.settings.new_profile(provider)
-            profile.update(mode=mode, parameters=parameters.defaults(provider, mode))
+            profile.update(mode=mode, base_url='https://example.test/' + ('responses' if mode == 'responses' else 'chat/completions'), parameters=parameters.defaults(provider, mode))
             self.assertEqual(ai.request_payload(profile, 'hi')[key], value)
 
     def test_no_output_cap_even_for_old_profiles(self):

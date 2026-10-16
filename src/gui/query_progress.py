@@ -27,22 +27,20 @@ class QueryProgressWindow(QDialog):
         layout.addWidget(self.write_status)
         self.background_button = QPushButton(tr('后台运行'))
         self.background_button.clicked.connect(self.run_in_background)
-        self.minimize_button = QPushButton(tr('最小化'))
-        self.minimize_button.setToolTip(tr('收起查询窗口和配置页进度，任务继续，可从 FastCM 菜单查看。'))
-        self.minimize_button.clicked.connect(self.run_in_background)
         background_actions = QHBoxLayout()
         background_actions.addWidget(self.background_button)
-        background_actions.addWidget(self.minimize_button)
+        self.cancel_button = QPushButton(tr('取消任务'))
+        self.cancel_button.clicked.connect(self.cancel_all)
+        background_actions.addWidget(self.cancel_button)
         layout.addLayout(background_actions)
-        cancel = QPushButton(tr('全部取消'))
-        cancel.clicked.connect(self.cancel_all)
-        layout.addWidget(cancel)
         if show_window:
             self.show()
 
     def cancel_all(self):
         self.dictionary.cancel()
         self.ai.cancel()
+        self.cancel_button.setText(tr('正在取消…'))
+        self.cancel_button.setEnabled(False)
 
     def closeEvent(self, event):
         self.run_in_background()
@@ -69,9 +67,7 @@ class ProgressLane:
         self.label.setWordWrap(True)
         self.bar = QProgressBar()
         self.bar.setRange(0, max(1, total))
-        self.button = QPushButton(tr('取消'))
-        self.button.clicked.connect(self.cancel)
-        for widget in (self.label, self.bar, self.button):
+        for widget in (self.label, self.bar):
             layout.addWidget(widget)
         self.total, self.rate = total, rate
         self.cancelled = False
@@ -84,7 +80,6 @@ class ProgressLane:
     def cancel(self):
         if not self.done:
             self.cancelled = True
-            self.button.setEnabled(False)
             self.label.setText(tr('正在取消，等待已发出的请求结束…'))
 
     def abort(self):
@@ -109,7 +104,6 @@ class ProgressLane:
         if self.done:
             return
         self.done = True
-        self.button.setEnabled(False)
         self.label.setText(self.label.text() + tr(' · 已取消' if self.cancelled else ' · 已完成'))
 
     def update_title(self, title):

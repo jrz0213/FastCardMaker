@@ -27,7 +27,8 @@ def build_settings_layout(self):
         self.provider.addItem(name, key)
     self.name = QLineEdit()
     self.address = QLineEdit()
-    self.address.setPlaceholderText('https://example.com/v1/chat/completions')
+    self.address.setPlaceholderText('https://example.com/v1/responses')
+    self.address.setToolTip(tr('API 地址（含接口路径）'))
     self.address.editingFinished.connect(self.address_edited)
     self.key = QLineEdit()
     self.key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -37,13 +38,18 @@ def build_settings_layout(self):
     self.mode = QComboBox()
     self.mode.addItem('Responses API', 'responses')
     self.mode.addItem('Chat Completions API', 'chat')
+    self.mode.addItem('Gemini Interactions API', 'interactions')
+    self.mode.addItem('Claude Messages API', 'messages')
+    # Retain the internal value for old profile handling; the URL selects it.
+    self.mode.setParent(self)
+    self.mode.hide()
     self.send_mode = QComboBox()
     self.send_mode.addItem(tr('逐字段发送（默认）'), 'field')
     self.send_mode.addItem(tr('按笔记合并发送'), 'note')
     self.send_mode.setToolTip(tr('合并同一笔记使用此 AI 配置的字段，一次回复后分别填入。'))
     for label, widget in [(tr('服务预设'), self.provider), (tr('配置名称'), self.name),
-                          (tr('API 域名'), self.address),
-                          ('API Key', self.key), (tr('调用模型'), self.model), (tr('接口模式'), self.mode)]:
+                          (tr('API 地址'), self.address),
+                          ('API Key', self.key), (tr('调用模型'), self.model)]:
         basic_form.addRow(label, widget)
     self.send_hint = QLabel()
     self.send_hint.setWordWrap(True)
@@ -90,7 +96,7 @@ def build_settings_layout(self):
     self.hint = QLabel()
     self.hint.setWordWrap(True)
     form.addRow(self.hint)
-    note = QLabel(tr('填写完整接口地址（包含 /responses 或 /chat/completions）。自由参数按原样加入请求体，不按模型筛选；不支持的参数请自行删除。content 是否可作为顶层参数取决于接口。'))
+    note = QLabel(tr('接口格式根据完整地址自动识别，无需选择模式。自由参数按原样加入请求体；请按服务商备注填写，不支持的参数自行删除。'))
     note.setWordWrap(True)
     form.addRow(note)
     panel_layout.addWidget(self.advanced)

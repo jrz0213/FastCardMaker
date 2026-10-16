@@ -82,7 +82,7 @@ class CombinedAITests(unittest.TestCase):
         with patch.object(self.ai, 'render_prompt', side_effect=lambda template, fields: template.replace('{{Word}}', fields['Word'])):
             for mode in ('responses', 'chat'):
                 with self.subTest(mode=mode):
-                    self.profile['mode'] = mode
+                    self.profile.update(mode=mode, base_url='https://example.test/' + ('responses' if mode == 'responses' else 'chat/completions'))
                     with patch.object(self.ai, '_send', return_value=self.response(text, mode)) as send:
                         result = self.ai.query_ai_many(self.unique, templates, {'Word': 'apple'})
                     send.assert_called_once()

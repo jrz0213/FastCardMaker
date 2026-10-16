@@ -8,7 +8,7 @@ from ..base import Dialog
 from .layout import build_settings_layout
 from ...service.ai_config import PRESETS, new_profile, profiles, save_profiles, session_key
 import json
-from ...service.ai_support.parameters import parameters_for, defaults as parameter_defaults, endpoint
+from ...service.ai_support.parameters import parameters_for, defaults as parameter_defaults, endpoint, protocol
 from ...service.ai_keys import key_store_path
 
 
@@ -92,11 +92,11 @@ class AISettingsDialog(Dialog):
         self.refresh_options()
 
     def address_edited(self):
-        address = self.address.text().strip().rstrip('/')
-        for suffix, mode in (('/chat/completions', 'chat'), ('/responses', 'responses')):
-            if address.endswith(suffix):
-                self.mode.setCurrentIndex(self.mode.findData(mode))
-                break
+        try:
+            mode = protocol(dict(base_url=self.address.text().strip(), endpoint_url=True))
+        except ValueError:
+            return  # Report incomplete/unsupported addresses when saving.
+        self.mode.setCurrentIndex(self.mode.findData(mode))
 
     def refresh_options(self, *_):
         if self.loading:
@@ -111,19 +111,15 @@ class AISettingsDialog(Dialog):
                 current = None
             if current == parameter_defaults(provider, previous):
                 self.parameters.setPlainText(json.dumps(parameter_defaults(provider, mode), ensure_ascii=False, indent=2))
-            old_suffix = '/responses' if previous == 'responses' else '/chat/completions'
-            if self.address.text().rstrip('/').endswith(old_suffix):
-                self.address.setText(self.address.text().rstrip('/')[:-len(old_suffix)] +
-                                     ('/responses' if mode == 'responses' else '/chat/completions'))
         self._parameter_mode = mode
         notes = {
             'deepseek': tr('DeepSeek：Chat 使用 thinking.type；Responses 使用 reasoning.effort。'),
-            'qwen': tr('百炼 Chat：enable_thinking=false 关闭思考；其他接口请按服务文档修改。'),
-            'gemini': tr('Gemini 兼容 Chat：reasoning_effort=none；部分模型不能关闭思考，请自行修改。'),
-            'claude': tr('Claude：thinking.type=disabled 是示例；官方 Messages 接口不支持，请填写 Chat 兼容网关地址。'),
+            'qwen': tr('Qwen 默认使用 Responses；enable_thinking=false 关闭思考。百炼地域或业务空间可能使用专属域名，请填写控制台对应的完整地址。'),
+            'gemini': tr('Gemini 默认使用官方 Interactions；generation_config 中填写 temperature 和 thinking_level。minimal 不等于关闭思考，支持范围取决于模型。'),
+            'claude': tr('Claude 默认使用官方 Messages；max_tokens 是输出上限，thinking.type=disabled 是关闭思考的示例。'),
         }
         self.hint.setText(notes.get(provider, tr('Responses 使用 reasoning.effort；Chat 使用 reasoning_effort。')) +
-                          '\n' + tr('预填温度 1、关闭思考的示例。不同模型支持范围不同，可自由增删；JSON 中不要写备注。限速、重试及超时在插件设置的 AI 设置中调整。'))
+                          '\n' + tr('预填参数仅为示例，不同模型支持范围不同，可自由增删；JSON 中不要写备注。限速、重试及超时在插件设置的 AI 设置中调整。'))
 
     def apply_preset(self):
         self.loading = True
@@ -167,6 +163,7 @@ class AISettingsDialog(Dialog):
             self.skill.clear()
 
     def accept(self):
+        self.address_edited()
         self.capture()
         try:
             save_profiles(self.items, self.keys)

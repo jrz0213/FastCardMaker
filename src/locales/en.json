@@ -656,5 +656,14 @@
   "Claude：thinking.type=disabled 是示例；官方 Messages 接口不支持，请填写 Chat 兼容网关地址。": "Claude: thinking.type=disabled is an example. The native Messages API is not supported; use a Chat-compatible gateway URL.",
   "Responses 使用 reasoning.effort；Chat 使用 reasoning_effort。": "Responses uses reasoning.effort; Chat uses reasoning_effort.",
   "预填温度 1、关闭思考的示例。不同模型支持范围不同，可自由增删；JSON 中不要写备注。限速、重试及超时在插件设置的 AI 设置中调整。": "Examples start with temperature 1 and thinking disabled. Model support varies; edit or remove parameters as needed. Do not put comments in JSON. Rate, retries and timeouts are in Plugin settings → AI settings.",
-  "填写完整接口地址（包含 /responses 或 /chat/completions）。自由参数按原样加入请求体，不按模型筛选；不支持的参数请自行删除。content 是否可作为顶层参数取决于接口。": "Enter the complete endpoint, including /responses or /chat/completions. Custom parameters are sent as entered without model filtering. Remove unsupported fields. Whether top-level content is accepted depends on the API."
+  "填写完整接口地址（包含 /responses 或 /chat/completions）。自由参数按原样加入请求体，不按模型筛选；不支持的参数请自行删除。content 是否可作为顶层参数取决于接口。": "Enter the complete endpoint, including /responses or /chat/completions. Custom parameters are sent as entered without model filtering. Remove unsupported fields. Whether top-level content is accepted depends on the API.",
+  "API 地址（含接口路径）": "API address (including endpoint path)",
+  "API 地址": "API address",
+  "接口格式根据完整地址自动识别，无需选择模式。自由参数按原样加入请求体；请按服务商备注填写，不支持的参数自行删除。": "The complete URL selects the API format automatically. Custom parameters are sent as entered; follow provider notes and remove unsupported parameters.",
+  "无法识别接口地址，请填写以 /responses、/chat/completions、/interactions 或 /messages 结尾的完整地址。": "Unrecognized API URL. Enter a complete URL ending in /responses, /chat/completions, /interactions or /messages.",
+  "Qwen 默认使用 Responses；enable_thinking=false 关闭思考。百炼地域或业务空间可能使用专属域名，请填写控制台对应的完整地址。": "Qwen defaults to Responses; enable_thinking=false disables thinking. Model Studio regions or workspaces may use dedicated domains: use the complete URL from your console.",
+  "Gemini 默认使用官方 Interactions；generation_config 中填写 temperature 和 thinking_level。minimal 不等于关闭思考，支持范围取决于模型。": "Gemini defaults to the official Interactions API. Set temperature and thinking_level inside generation_config. minimal does not disable thinking; support varies by model.",
+  "Claude 默认使用官方 Messages；max_tokens 是输出上限，thinking.type=disabled 是关闭思考的示例。": "Claude defaults to the official Messages API. max_tokens caps output; thinking.type=disabled is an example for disabling thinking.",
+  "预填参数仅为示例，不同模型支持范围不同，可自由增删；JSON 中不要写备注。限速、重试及超时在插件设置的 AI 设置中调整。": "Prefilled parameters are editable examples; support varies by model. Do not put comments in JSON. Rate limits, retries and timeouts are under Plugin settings → AI settings.",
+  "正在取消…": "Cancelling…"
 }

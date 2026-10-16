@@ -62,7 +62,7 @@ class ScriptInformationTests(unittest.TestCase):
         profile.update(model='test-model', skill='')
         history = [{'role': 'user', 'content': 'prior question'}, {'role': 'assistant', 'content': 'prior answer'}]
         for mode in ('chat', 'responses'):
-            profile['mode'] = mode
+            profile.update(mode=mode, base_url='https://example.test/' + ('responses' if mode == 'responses' else 'chat/completions'))
             payload = ai.request_payload(profile, 'current request', 'parser instructions', history=history)
             messages = payload['messages'] if mode == 'chat' else payload['input']
             self.assertEqual([m['content'] for m in messages if m['role'] in ('user', 'assistant')],

@@ -14,9 +14,9 @@ from .store import read_settings, write_settings, remove_legacy_settings
 PRESETS = {
     'openai': ('ChatGPT / OpenAI', 'https://api.openai.com/v1/responses', 'responses'),
     'deepseek': ('DeepSeek', 'https://api.deepseek.com/responses', 'responses'),
-    'qwen': (tr('Qwen / 百炼'), 'https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions', 'chat'),
-    'gemini': ('Gemini', 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', 'chat'),
-    'claude': ('Claude', '', 'chat'),
+    'qwen': (tr('Qwen / 百炼'), 'https://maas.qianwenaiapi.com/compatible-mode/v1/responses', 'responses'),
+    'gemini': ('Gemini', 'https://generativelanguage.googleapis.com/v1beta/interactions', 'interactions'),
+    'claude': ('Claude', 'https://api.anthropic.com/v1/messages', 'messages'),
     'custom': (tr('自定义'), '', 'responses'),
 }
 PROFILE_FIELDS = ('id', 'name', 'provider', 'base_url', 'mode', 'model',
@@ -81,8 +81,8 @@ def validate_profile(item):
     url = urlsplit(item.get('base_url', ''))
     if url.scheme not in ('https', 'http') or not url.hostname or url.username or url.password or url.query or url.fragment:
         raise ValueError(tr('API 地址应是完整的 http(s) 基础地址，不能含密钥、查询参数或用户名。'))
-    if item.get('mode') not in ('responses', 'chat'):
-        raise ValueError(tr('请选择 Responses 或 Chat Completions。'))
+    from .parameters import protocol
+    protocol(item)
     parameters_for(item)
     if type(item.get('connect_timeout', 10)) is not int or not 1 <= item.get('connect_timeout', 10) <= 60:
         raise ValueError(tr('连接超时应为 1 到 60 秒。'))
@@ -108,6 +108,8 @@ def save_profiles(items, keys, requests_per_minute=None):
                         connect_timeout=10, retries=2)
         saved = {key: item.get(key, defaults.get(key)) for key in PROFILE_FIELDS if key not in ('temperature', 'reasoning')}
         saved['parameters'] = parameters_for(item)
+        from .parameters import protocol
+        saved['mode'] = protocol(item)
         safe.append(saved)
     data = read_settings()
     data.update(profiles=safe, requests_per_minute=ai_send_rate())

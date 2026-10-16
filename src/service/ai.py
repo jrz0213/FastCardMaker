@@ -15,7 +15,7 @@ from .result import QueryResult
 from ..utils.ai_format import render as render_output, style_for
 from ..context import config
 from .ai_limits import AIRequestLimiter
-from .ai_support.parameters import parameters_for, endpoint
+from .ai_support.parameters import parameters_for, endpoint, protocol
 from .ai_support import diagnostics
 from .ai_support.retry import retry_delay
 from .ai_support.batching import OUTPUT_INSTRUCTIONS, build_prompt, parse_fields
@@ -81,7 +81,7 @@ def render_prompt(template, fields):
 
 
 def request_payload(profile, prompt, output_instructions='', history=None):
-    mode = profile['mode']
+    mode = protocol(profile)
     data = {'model': profile['model']}
     skill = profile.get('skill', '').strip()
     if output_instructions:
@@ -92,6 +92,20 @@ def request_payload(profile, prompt, output_instructions='', history=None):
             data['input'] = list(history) + [{'role': 'user', 'content': prompt}]
         if skill:
             data['instructions'] = skill
+    elif mode == 'interactions':
+        # Stateless text queries: include the full visible transcript as context.
+        # Never fabricate model_output steps without Google's thought signatures.
+        if history:
+            transcript = '\n\n'.join(str(turn['role']) + ':\n' + str(turn['content']) for turn in history)
+            prompt = 'Earlier conversation (context):\n' + transcript + '\n\nCurrent user request:\n' + prompt
+        data.update(input=prompt, store=False, stream=False)
+        if skill:
+            data['system_instruction'] = skill
+    elif mode == 'messages':
+        data.update(messages=list(history or []) + [{'role': 'user', 'content': prompt}],
+                    stream=False, max_tokens=4096)
+        if skill:
+            data['system'] = skill
     else:
         data.update(messages=list(history or []) + [{'role': 'user', 'content': prompt}],
                     stream=False)
@@ -114,6 +128,18 @@ def response_text(data, mode):
                          if item.get('type') == 'message' and item.get('role', 'assistant') == 'assistant'
                          for part in item.get('content', [])
                          if part.get('type') == 'output_text' and isinstance(part.get('text'), str))
+    elif mode == 'interactions':
+        if data.get('error') or data.get('status') != 'completed':
+            raise AIError(tr('AI 回复未完整生成，请检查回复长度、模型或服务状态。'))
+        text = '\n'.join(part['text'] for step in data.get('steps', [])
+                         if step.get('type') == 'model_output'
+                         for part in step.get('content', [])
+                         if part.get('type') == 'text' and isinstance(part.get('text'), str))
+    elif mode == 'messages':
+        if data.get('type') != 'message' or data.get('stop_reason') not in ('end_turn', 'stop_sequence'):
+            raise AIError(tr('AI 回复为空或未完整生成。'))
+        text = '\n'.join(part['text'] for part in data.get('content', [])
+                         if part.get('type') == 'text' and isinstance(part.get('text'), str))
     else:
         choices = data.get('choices', [])
         if not choices or choices[0].get('finish_reason') in ('length', 'content_filter'):
@@ -185,9 +211,12 @@ def _request_text(unique, prompt, cancelled=None, output_instructions='', connec
     if not key:
         raise AIError(tr('未填写 API Key，请打开 AI 设置。'), code='missing_key')
     address = endpoint(profile)
+    mode = protocol(profile)
     headers = {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'}
-    if profile.get('provider') == 'gemini':
-        headers['x-goog-api-client'] = 'fastcard-maker/1.0'
+    if mode == 'interactions':
+        headers = {'x-goog-api-key': key, 'Content-Type': 'application/json'}
+    elif mode == 'messages':
+        headers = {'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json'}
     payload = request_payload(profile, prompt, output_instructions, history=history)
     try:
         response = _send(address, headers, payload, profile, cancelled)
@@ -206,8 +235,8 @@ def _request_text(unique, prompt, cancelled=None, output_instructions='', connec
                 message = tr('AI 请求失败（HTTP %s），请检查地址、密钥、模型和参数。') % status
             raise AIError(message, code='http_%s' % status)
         data = response.json()
-        diagnostics.usage(data, profile['mode'])
-        text = response_text(data, profile['mode'])
+        diagnostics.usage(data, mode)
+        text = response_text(data, mode)
     except requests.RequestException:
         raise AIError(tr('AI 请求超时或连接失败，请检查网络和 API 地址。'), code='connection') from None
     except (KeyError, TypeError, AttributeError):

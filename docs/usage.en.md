@@ -17,13 +17,15 @@ Add notes in Anki and fill in a topic, question or study material. For example, 
 Open **FastCM → Options → AI settings**:
 
 1. Add a connection profile and give it a name.
-2. Enter the complete endpoint in **API domain**, including its path, then enter the API key and model.
-3. Select a supported API protocol and click **OK**.
+2. Enter the complete endpoint in **API address (including endpoint path)**, including its path, then enter the API key and model.
+3. Enter the key and a model that supports this API, then click **OK**.
 4. Optionally use **Skill** for shared instructions, such as “Answer concisely and include a concrete example.”
 
 ![AI connection settings](images/user-guide/en-ai-settings.png)
 
-Example URLs: `https://api.deepseek.com/responses` or `https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions`. Match the API protocol to the URL.
+Example URLs: `https://api.deepseek.com/responses` or `https://maas.qianwenaiapi.com/compatible-mode/v1/responses`. Selecting a service preset fills its complete endpoint automatically; there is no API mode selector. OpenAI, DeepSeek and Qwen default to Responses, Gemini to the official Interactions API, and Claude to Messages. Enter a model that supports that API. Existing profiles keep their addresses; check custom parameters when changing an endpoint.
+
+Qwen/Model Studio regions and workspaces may require dedicated domains, so use the complete endpoint from your console. Gemini parameters belong inside `generation_config` (for example `temperature: 1`, `thinking_level: "minimal"`); minimal does not disable thinking. Claude defaults to `max_tokens: 4096`, editable under More settings.
 
 Open **More settings → Custom parameters (JSON)** to edit the examples or add supported parameters. For Responses:
 
@@ -35,7 +37,7 @@ Open **More settings → Custom parameters (JSON)** to edit the examples or add 
 }
 ```
 
-Temperature 1 and thinking disabled are editable examples, without automatic model filtering. DeepSeek Chat uses `"thinking":{"type":"disabled"}`; Qwen Chat uses `"enable_thinking":false`. Follow the notes under the input, remove unsupported parameters and omit JSON comments. Top-level `content` support depends on the API; use the conversation input to ask “Continue the previous answer.”
+Temperature 1 and thinking disabled are editable examples, without automatic model filtering. DeepSeek Chat uses `"thinking":{"type":"disabled"}`; Qwen (including Responses) uses `"enable_thinking":false`. Follow the notes under the input, remove unsupported parameters and omit JSON comments. Top-level `content` support depends on the API; use the conversation input to ask “Continue the previous answer.”
 
 Shared request rate, request/connection timeouts and retries are in **Plugin settings → AI settings**.
 
@@ -100,7 +102,7 @@ Use **Dictionary settings** for dictionary workers and matching; use **General s
 
 ![Sending mode and formatting settings](images/user-guide/en-settings.png)
 
-During a query, click **Run in background** or **Minimize** to continue using Anki. Check **FastCM → Task progress**, inspect results when finished, and click **Finish task** to hide progress. Keep Anki open. Results are saved every 30 seconds, with remaining content saved at the end.
+During a query, click **Run in background** to continue using Anki. Check **FastCM → Task progress**, inspect results when finished, and click **Finish task** to hide progress. Keep Anki open. Results are saved every 30 seconds, with remaining content saved at the end.
 
 If a recovery dialog appears after restarting, click **Recover results** to apply cached output or **Later** to keep it for another time.
 
@@ -160,6 +162,6 @@ History and source attachments increase token usage and may exceed the model lim
 - **Nothing was filled:** check that the target is not ignored, the correct source is selected, and Skip existing values is not skipping its current content. Open Task progress for failure details.
 - **Regenerate one field:** clear Skip existing values for that field and ignore other targets. Save, select a few notes, and query again. Regeneration replaces the target’s previous content.
 - **Changes seem to have no effect:** save both the AI connection dialog and the main Options dialog with OK, then select that saved configuration in the whole-type query dialog.
-- **Connection or parameter error:** check the key, model, complete endpoint and API protocol. If the API rejects a parameter, remove it from the JSON under More settings and retry.
+- **Connection or parameter error:** check the key, model, complete endpoint. If the API rejects a parameter, remove it from the JSON under More settings and retry.
 - **Missing dictionary content or audio:** restore the MDX, associated MDD and resource paths, then rescan. For dictionaries whose JS changes audio paths, send both HTML and JS when generating a parser, then debug and test a few notes.
 - **Background window disappeared:** reopen FastCM → Task progress. Minimizing keeps the task running; closing Anki stops further requests. Cached replies can be recovered on the next launch.

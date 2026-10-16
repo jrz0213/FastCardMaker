@@ -1,14 +1,19 @@
 """User-editable JSON request parameters; no model capability filtering."""
 import json
+from urllib.parse import urlsplit
 from copy import deepcopy
 from ...translations import text as tr
 
 
 def defaults(provider, mode):
+    if mode == 'interactions':
+        return {'generation_config': {'temperature': 1, 'thinking_level': 'minimal'}}
+    if mode == 'messages':
+        return {'temperature': 1, 'thinking': {'type': 'disabled'}, 'max_tokens': 4096}
     data = {'temperature': 1}
     if provider in ('deepseek', 'claude') and mode == 'chat':
         data['thinking'] = {'type': 'disabled'}
-    elif provider == 'qwen' and mode == 'chat':
+    elif provider == 'qwen':
         data['enable_thinking'] = False
     elif mode == 'responses':
         data['reasoning'] = {'effort': 'none'}
@@ -34,7 +39,7 @@ def parse_parameters(value):
         json.dumps(value, allow_nan=False)
     except (ValueError, TypeError):
         raise ValueError(tr('自由参数包含无效的 JSON 值。')) from None
-    if any(key in value for key in ('model', 'messages', 'input', 'instructions', 'api_key', 'authorization', 'headers')):
+    if any(key in value for key in ('model', 'messages', 'input', 'instructions', 'system', 'system_instruction', 'api_key', 'authorization', 'headers')):
         raise ValueError(tr('模型、消息正文和认证由插件填写，请勿在自由参数中覆盖。'))
     if value.get('stream', False) is not False:
         raise ValueError(tr('当前仅支持非流式请求，stream 必须为 false。'))
@@ -66,6 +71,16 @@ def parameters_for(profile):
 
 def endpoint(profile):
     address = profile.get('base_url', '').rstrip('/')
-    if profile.get('endpoint_url') or address.endswith(('/responses', '/chat/completions')):
+    if profile.get('endpoint_url') or address.endswith(('/responses', '/chat/completions', '/interactions', '/messages')):
         return address
     return address + ('/responses' if profile.get('mode') == 'responses' else '/chat/completions')
+
+
+def protocol(profile):
+    """The endpoint decides the wire format, including legacy saved profiles."""
+    path = urlsplit(endpoint(profile)).path.rstrip('/')
+    for suffix, mode in (('/responses', 'responses'), ('/chat/completions', 'chat'),
+                         ('/interactions', 'interactions'), ('/messages', 'messages')):
+        if path.endswith(suffix):
+            return mode
+    raise ValueError(tr('无法识别接口地址，请填写以 /responses、/chat/completions、/interactions 或 /messages 结尾的完整地址。'))

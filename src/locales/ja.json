@@ -656,5 +656,14 @@
   "Claude：thinking.type=disabled 是示例；官方 Messages 接口不支持，请填写 Chat 兼容网关地址。": "Claude：thinking.type=disabled は記入例です。公式 Messages API には未対応のため、Chat 互換ゲートウェイの URL を入力してください。",
   "Responses 使用 reasoning.effort；Chat 使用 reasoning_effort。": "Responses は reasoning.effort、Chat は reasoning_effort を使用します。",
   "预填温度 1、关闭思考的示例。不同模型支持范围不同，可自由增删；JSON 中不要写备注。限速、重试及超时在插件设置的 AI 设置中调整。": "温度 1・思考無効の例を入力済みです。対応範囲はモデルごとに異なるため、自由に追加・削除してください。JSON 内にコメントは記入しないでください。速度制限・再試行・タイムアウトはプラグイン設定の AI 設定で変更します。",
-  "填写完整接口地址（包含 /responses 或 /chat/completions）。自由参数按原样加入请求体，不按模型筛选；不支持的参数请自行删除。content 是否可作为顶层参数取决于接口。": "/responses または /chat/completions を含む完全な URL を入力してください。自由パラメーターはモデルによる選別なしで送信します。未対応の項目は削除してください。content を最上位に指定できるかは API によって異なります。"
+  "填写完整接口地址（包含 /responses 或 /chat/completions）。自由参数按原样加入请求体，不按模型筛选；不支持的参数请自行删除。content 是否可作为顶层参数取决于接口。": "/responses または /chat/completions を含む完全な URL を入力してください。自由パラメーターはモデルによる選別なしで送信します。未対応の項目は削除してください。content を最上位に指定できるかは API によって異なります。",
+  "API 地址（含接口路径）": "API アドレス（エンドポイントを含む）",
+  "API 地址": "API アドレス",
+  "接口格式根据完整地址自动识别，无需选择模式。自由参数按原样加入请求体；请按服务商备注填写，不支持的参数自行删除。": "完全な URL から API 形式を自動判定します。追加パラメータはそのまま送信されます。プロバイダーの注意事項に従い、未対応の項目を削除してください。",
+  "无法识别接口地址，请填写以 /responses、/chat/completions、/interactions 或 /messages 结尾的完整地址。": "API URL を判定できません。/responses、/chat/completions、/interactions、/messages のいずれかで終わる完全な URL を入力してください。",
+  "Qwen 默认使用 Responses；enable_thinking=false 关闭思考。百炼地域或业务空间可能使用专属域名，请填写控制台对应的完整地址。": "Qwen の既定は Responses です。enable_thinking=false で思考を無効にします。地域やワークスペースの専用ドメインはコンソールで確認してください。",
+  "Gemini 默认使用官方 Interactions；generation_config 中填写 temperature 和 thinking_level。minimal 不等于关闭思考，支持范围取决于模型。": "Gemini の既定は公式 Interactions API です。temperature と thinking_level は generation_config に指定します。minimal は思考の完全な無効化ではなく、対応状況はモデルによります。",
+  "Claude 默认使用官方 Messages；max_tokens 是输出上限，thinking.type=disabled 是关闭思考的示例。": "Claude の既定は公式 Messages API です。max_tokens は出力上限、thinking.type=disabled は思考を無効にする設定例です。",
+  "预填参数仅为示例，不同模型支持范围不同，可自由增删；JSON 中不要写备注。限速、重试及超时在插件设置的 AI 设置中调整。": "初期パラメータは編集可能な例です。対応はモデルによります。JSON にコメントは書けません。送信制限、再試行、タイムアウトはプラグイン設定 → AI 設定で変更します。",
+  "正在取消…": "キャンセル中…"
 }

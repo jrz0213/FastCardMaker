@@ -134,7 +134,7 @@ class ServiceRuntimeTests(unittest.TestCase):
     def test_combined_ai_expands_html_then_splits_json_tables(self):
         settings = self.load('service.ai_config')
         profile = settings.new_profile('custom')
-        profile.update(base_url='https://example.test/v1', model='test', send_mode='note')
+        profile.update(base_url='https://example.test/v1/responses', model='test', send_mode='note')
         settings.save_profiles([profile], {profile['id']: 'test-key'})
         ai = self.load('service.ai')
         text = json.dumps({'意思': '**苹果**', '相似词': '| 单词 | 关系 |\n| --- | --- |\n| pear | 同类词 |'})

@@ -46,7 +46,7 @@ class ScriptGenerationTests(unittest.TestCase):
                       'unavailable': []}
         settings = self.host.load('service.ai_config')
         profile = settings.new_profile('custom')
-        profile.update(id='test', model='test-model', base_url='https://example.test/v1')
+        profile.update(id='test', model='test-model', base_url='https://example.test/v1/responses')
         self.host.host.config.ai_profiles = [profile]
         settings._session_keys['test'] = 'test-session-key'
 
@@ -145,7 +145,7 @@ class ScriptGenerationTests(unittest.TestCase):
         module = self.host.load('gui.script_generator')
         ai = self.host.load('service.ai')
         profile = self.host.load('service.ai_config').new_profile('custom')
-        profile.update(id='test', model='test-model', base_url='https://example.test/v1', skill='Normal field Skill must stay saved')
+        profile.update(id='test', model='test-model', base_url='https://example.test/v1/responses', skill='Normal field Skill must stay saved')
         self.host.host.config.ai_profiles = [profile]
         base = self.host.load('service.base')
         fake = types.SimpleNamespace(support=True, builder=self.builder)

@@ -33,7 +33,7 @@ def build_settings_layout(self):
     self.key = QLineEdit()
     self.key.setEchoMode(QLineEdit.EchoMode.Password)
     self.key.setPlaceholderText(tr('点击确定后保存在本机，重启后仍保留'))
-    self.key.setToolTip(tr('AI 配置及 Key 集中保存在本地（Key 为明文）：\n') + str(key_store_path()))
+    self.key.setToolTip(tr('API Key 仅保存在本机用户目录（明文）：\n') + str(key_store_path()))
     self.model = ModelInput()
     self.mode = QComboBox()
     self.mode.addItem('Responses API', 'responses')

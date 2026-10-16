@@ -45,6 +45,7 @@ class RefactorTests(unittest.TestCase):
         self.config = types.SimpleNamespace(
             sound_str='[sound:{0}]', use_filename=True, ignore_mdx_wordcase=True,
             fuzzy_match=False, export_media=True, dicts={}, update=Mock(),
+            settings_difference=Mock(return_value=[]), resolve_settings=Mock(),
         )
         add(PACKAGE + '.context', config=self.config)
         add(PACKAGE + '.lang', _cl=lambda labels: labels[0],

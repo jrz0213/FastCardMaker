@@ -19,7 +19,9 @@
 
 import json
 import os
-import tempfile
+from pathlib import Path
+from copy import deepcopy
+from .utils.config_storage import portable, restore_portable, fingerprint, read_object, atomic_write, validate_settings
 
 from anki.hooks import runHook
 from aqt import mw
@@ -46,6 +48,8 @@ class Config(object):
         self.window = window
         self.version = '0'
         self.data = None
+        self._shared_hash = None
+        self._sync_paused = False
         self.read()
 
     @property
@@ -66,23 +70,83 @@ class Config(object):
     def update(self, data):
         self.read()
         updated = dict(self.data)
-        updated.update(data)
+        updated.update({str(key): value for key, value in data.items()})
         updated['version'] = VERSION
         updated['%s_last' % self.pmname] = data.get('last_model', self.last_model_id)
-        temporary = None
+        # An externally changed media file must never be overwritten by a save
+        # from a window that was already open. Keep changes locally until chosen.
         try:
-            os.makedirs(os.path.dirname(self.path), exist_ok=True)
-            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8',
-                    dir=os.path.dirname(self.path), prefix='.fastcm-', delete=False) as file:
-                temporary = file.name
-                json.dump(updated, file, indent=4, ensure_ascii=False)
-                file.flush()
-                os.fsync(file.fileno())
-            os.replace(temporary, self.path)
-            self.data = updated
-        finally:
-            if temporary is not None and os.path.exists(temporary):
-                os.remove(temporary)
+            shared = self.shared_settings()
+        except (OSError, ValueError):
+            shared = None
+        expected_hash = fingerprint(shared) if shared is not None else None
+        publish = not self._sync_paused and expected_hash is not None and expected_hash == self._local_shared_hash
+        target_hash = fingerprint(updated) if publish else self._shared_hash
+        self._write_local(updated, self._shared_hash)
+        self.data = updated
+        self._local_shared_hash = fingerprint(updated)
+        if publish:
+            try:
+                latest = read_object(self.path)
+                if fingerprint(latest) == expected_hash:
+                    if latest != portable(updated):
+                        atomic_write(self.path, portable(updated))
+                    self._shared_hash = target_hash
+                    self._write_local(updated, target_hash)
+            except (OSError, ValueError):
+                # The local save succeeded; keep a pending copy for resolution.
+                self._sync_paused = True
+        runHook('config.update')
+
+    @property
+    def local_path(self):
+        return Path(self.window.pm.profileFolder()) / '_fastcm_local.json'
+
+    def _write_local(self, data, shared_hash):
+        atomic_write(self.local_path, {'format': 'fastcm-local', 'settings': data,
+                                       'shared_hash': shared_hash})
+
+    def shared_settings(self):
+        return portable(validate_settings(read_object(self.path)))
+
+    def settings_difference(self):
+        remote, local = self.shared_settings(), portable(self.data)
+        differences = sorted(key for key in set(remote) | set(local)
+                             if key not in remote or key not in local or remote[key] != local[key])
+        if not differences:
+            self._shared_hash = fingerprint(remote)
+            self._sync_paused = False
+        return differences
+
+    def resolve_settings(self, action):
+        if action == 'cancel':
+            self._sync_paused = True
+            return
+        if action not in ('overwrite', 'sync'):
+            raise ValueError('Invalid configuration action')
+        remote = self.shared_settings()
+        updated = deepcopy(self.data) if action == 'overwrite' else restore_portable(remote, self.data)
+        atomic_write(self.local_path.with_suffix('.previous.json'),
+                     {'format': 'fastcm-local', 'settings': remote if action == 'overwrite' else self.data,
+                      'shared_hash': self._shared_hash})
+        if action == 'overwrite':
+            atomic_write(self.path, portable(updated))
+        self._shared_hash = fingerprint(updated)
+        self._write_local(updated, self._shared_hash)
+        self.data = updated
+        self._local_shared_hash = fingerprint(updated)
+        self._sync_paused = False
+        runHook('config.update')
+
+    def import_settings(self, settings):
+        incoming = portable(validate_settings(settings, importing=True))
+        updated = restore_portable(incoming, self.data)
+        atomic_write(self.local_path.with_suffix('.previous.json'),
+                     {'format': 'fastcm-local', 'settings': self.data, 'shared_hash': self._shared_hash})
+        self._write_local(updated, self._shared_hash)
+        self.data = updated
+        self._local_shared_hash = fingerprint(updated)
+        self._sync_paused = True
         runHook('config.update')
 
     def read(self, force=False):
@@ -95,14 +159,36 @@ class Config(object):
                       os.path.join(self.media_dir, '_fastwqcfg.json'),
                       os.path.join(self.media_dir, '.fastwqcfg.json')]
         path = next((candidate for candidate in candidates if os.path.exists(candidate)), self.path)
+        local = read_object(self.local_path)
         try:
-            with open(path, encoding='utf-8') as file:
-                loaded = json.load(file)
+            if local:
+                loaded = {}  # A bad remote file must not prevent local startup.
+            else:
+                with open(path, encoding='utf-8') as file:
+                    loaded = json.load(file)
             if not isinstance(loaded, dict):
                 raise ValueError('Invalid FastCard Maker configuration')
         except FileNotFoundError:
             loaded = {}
-        self.data = loaded
+        if local:
+            if local.get('format') != 'fastcm-local' or not isinstance(local.get('settings'), dict):
+                raise ValueError('Invalid local FastCard Maker configuration')
+            self.data = local['settings']
+            self._shared_hash = local.get('shared_hash')
+        else:
+            self.data = loaded
+            self._shared_hash = fingerprint(read_object(self.path))
+        # Existing AI profiles are copied into portable settings in memory only.
+        # Credentials continue to be read from the original local file until saved.
+        if not local and 'ai_settings' not in self.data:
+            account = Path(self.window.pm.profileFolder())
+            for ai_path in (account / 'fastcm' / 'ai' / 'config.json',
+                            Path(__file__).parent / 'service' / 'ai' / account.name / 'config.json'):
+                if ai_path.exists():
+                    self.data['ai_settings'] = portable(read_object(ai_path))
+                    break
+        self._local_shared_hash = fingerprint(self.data)
+        self._sync_paused = False
         self._profile_key = profile
         self.generation += 1
         # Read older names, but keep them intact. The next explicit save writes
@@ -161,6 +247,10 @@ class Config(object):
     @property
     def ai_profiles(self):
         return self.data.get('ai_profiles', [])
+
+    @property
+    def ai_settings(self):
+        return self.data.get('ai_settings', {'profiles': self.ai_profiles})
 
     @property
     def ai_thread_number(self):

@@ -116,6 +116,20 @@ When notes are ready, a top prompt counts down **10 seconds**. Click **Run now**
 
 ![Countdown before an automatic run](images/user-guide/en-automatic-countdown.png)
 
+### 6. Synchronize or read configuration
+
+Opening **FastCM → Options** compares local settings with the copy in the media folder. A prompt appears only when they differ; expand its details to see the changed settings:
+
+- **Overwrite:** replace the media-folder copy with this device’s settings.
+- **Sync:** read the media-folder copy into this device.
+- **Cancel:** keep both copies and continue using local settings. Subsequent edits stay local until the difference is resolved.
+
+Field mappings, AI connections without keys, parameters and CSS are stored in `_fastcmcfg.json` in the media folder for Anki synchronization. The working local copy is `_fastcm_local.json` in the current profile folder. Dictionary folders, machine-specific paths and automatic-task progress remain local. API keys are stored in the profile’s `fastcm/ai/config.json`. The first upgrade reads existing configuration without overwriting it with defaults.
+
+To import an existing JSON configuration, open **Plugin settings → General settings → Read configuration**. The file picker starts in the media folder, allows other locations, and filters for JSON files. Confirming loads settings locally and refreshes field configuration, while keeping local dictionary paths and keys. On the next Options opening, choose whether to overwrite the media-folder copy. There is no manual backup button.
+
+Set dictionary folders separately on each computer. Missing dictionaries are never silently replaced with another source.
+
 ## Dictionaries and parser scripts
 
 ### 1. Add dictionaries and map fields

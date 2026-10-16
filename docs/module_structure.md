@@ -13,7 +13,10 @@ AI 界面集中在 `gui/ai_ui/`：`settings.py` 管配置切换和保存，`layo
 `limits.py` 管平滑发送和内部并发上限，`retry.py` 管有限 HTTP 重试。
 原 `gui/ai_*.py`、`service/ai_*.py` 保留薄兼容入口，指向同一实现对象，
 避免外部脚本和已有导入失效。中英文文案集中在 `translations.py`。
-AI 设置及密钥集中存入与 `service/dict` 同级的 `service/ai/<账户名>/config.json`。
+可同步设置写入媒体文件夹的 `_fastcmcfg.json`，本机工作副本写入用户目录的
+`_fastcm_local.json`。词典路径及调度进度只保存在本机；AI 密钥写入当前用户目录的
+`fastcm/ai/config.json`，读取旧插件目录配置作为迁移来源。
+`gui/config_sync.py` 在打开选项前提供本机覆盖媒体、媒体同步到本机及取消三种选择。
 请求适配位于 `service/ai.py`，
 基础 Markdown 转换位于 `utils/markdown.py`。使用方法见 [AI 字段填充](usage.zh-CN.md)。
 操作流程见 [图文指南](usage.zh-CN.md)。

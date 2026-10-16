@@ -63,6 +63,9 @@ def show_options(browser=None, model_id=-1, callback=None, *args, **kwargs):
     '''open options window'''
     parent = mw if browser is None else browser
     config.read()
+    from .config_sync import check_settings
+    if not check_settings(parent):
+        return
     opt_dialog = OptionsDialog(parent, tr('FastCard Maker 核心配置台'), model_id)
     opt_dialog.activateWindow()
     opt_dialog.raise_()

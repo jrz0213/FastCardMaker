@@ -141,7 +141,7 @@ class AITests(unittest.TestCase):
         self.settings.clear_session_keys()
         self.assertEqual(self.settings.session_key(self.profile['id']), 'memory-only')
         store = self.load('service.ai_keys')
-        self.assertEqual(store.key_store_path().parent.name,
+        self.assertEqual(store.key_store_path().parent.parent.parent.name,
                          Path(self.host.mw.pm.profileFolder()).name)
         self.assertEqual(json.loads(store.key_store_path().read_text())['keys'][self.profile['id']], 'memory-only')
 
@@ -159,6 +159,7 @@ class AITests(unittest.TestCase):
     def test_failed_key_write_leaves_profiles_and_old_keys_unchanged(self):
         store = self.load('service.ai_keys')
         store.write_keys({self.profile['id']: 'old-key'})
+        self.host.config.update.reset_mock()
         with patch.object(self.load('service.ai_store').os, 'replace', side_effect=PermissionError('secret-detail')):
             with self.assertRaises(ValueError) as error:
                 self.settings.save_profiles([self.profile], {self.profile['id']: 'new-key'})
@@ -197,7 +198,7 @@ class AITests(unittest.TestCase):
         self.assertEqual(self.settings.profiles(), [])
         self.assertEqual(self.settings.session_key(self.profile['id']), '')
         self.assertNotEqual(store.settings_path(), first_path)
-        self.assertEqual(first_path.parent.parent.name, 'ai')
+        self.assertEqual(first_path.parent.name, 'ai')
 
     def test_invalid_profile_does_not_commit_keys(self):
         self.profile['base_url'] = 'https://example.test/v1?api_key=secret'
@@ -534,7 +535,7 @@ class AITests(unittest.TestCase):
         data = store.read_settings()
         self.assertEqual(data['requests_per_minute'], 120)
         self.assertNotIn('thread_number', data)
-        self.host.config.update.assert_not_called()
+        self.assertEqual(self.host.config.update.call_args.args[0]['ai_settings']['requests_per_minute'], 120)
 
     def test_transient_http_retries_are_bounded_and_reenter_pacing(self):
         ai = self.load('service.ai')

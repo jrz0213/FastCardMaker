@@ -11,6 +11,7 @@ import time
 import types
 import unittest
 from copy import deepcopy
+from pathlib import Path
 from unittest.mock import Mock, patch
 
 import test_modularization as support
@@ -18,6 +19,47 @@ import test_modularization as support
 
 @unittest.skipUnless(importlib.util.find_spec('PyQt6'), 'PyQt6 is not installed')
 class GuiRuntimeTests(unittest.TestCase):
+    def test_option_sync_buttons_have_explicit_local_and_media_directions(self):
+        self.background_host()
+        module = self.load('gui.config_sync')
+        self.host.config.settings_difference.return_value = ['ai_settings']
+        for action in ('overwrite', 'sync', 'cancel'):
+            with patch.object(module, 'QMessageBox') as box, \
+                    patch.object(self.load('service.refresh'), 'get_updater') as updater:
+                dialog = box.return_value
+                overwrite, sync, cancel = Mock(), Mock(), Mock()
+                dialog.addButton.side_effect = [overwrite, sync, cancel]
+                dialog.clickedButton.return_value = {'overwrite': overwrite, 'sync': sync, 'cancel': cancel}[action]
+                self.assertTrue(module.check_settings(None))
+                self.host.config.resolve_settings.assert_called_with(action)
+                self.assertIn('本机 → 媒体文件夹', dialog.setInformativeText.call_args.args[0])
+                if action != 'sync':
+                    updater.assert_not_called()
+
+    def test_read_config_uses_media_folder_json_filter_and_preserves_cancel(self):
+        self.background_host()
+        sys.modules.pop(support.PACKAGE + '.gui.setting', None)
+        module = self.load('gui.setting')
+        self.host.config.media_dir = str(Path(self.host.mw.pm.profileFolder()) / 'collection.media')
+        self.host.config.import_settings = Mock()
+        dialog = module.SettingDialog(None)
+        self.widgets.append(dialog)
+        with patch.object(module.QFileDialog, 'getOpenFileName', return_value=('', '')) as picker:
+            dialog.read_configuration()
+        self.assertEqual(picker.call_args.args[2], self.host.config.media_dir)
+        self.assertIn('*.json', picker.call_args.args[3])
+        self.host.config.import_settings.assert_not_called()
+        self.assertFalse(dialog.configuration_loaded)
+        self.assertFalse(hasattr(dialog, 'backup_button'))
+        source = Path(self.host.mw.pm.profileFolder()) / 'settings.json'
+        source.write_text('{"ai_send_mode":"note"}', encoding='utf-8')
+        with patch.object(module.QFileDialog, 'getOpenFileName', return_value=(str(source), '')), \
+                patch.object(module.QMessageBox, 'question', return_value=self.qt.QMessageBox.StandardButton.Yes), \
+                patch.object(module.QMessageBox, 'information'):
+            dialog.read_configuration()
+        self.host.config.import_settings.assert_called_once_with({'ai_send_mode': 'note'})
+        self.assertTrue(dialog.configuration_loaded)
+
     def test_combined_progress_has_only_background_and_cancel_actions(self):
         self.background_host()
         window = self.load('gui.query_progress').QueryProgressWindow(3, 2, 29, show_window=False)

@@ -120,6 +120,7 @@ src/src.zip
 *.ankiaddon
 *_fastcmcfg.json
 *_fastwqcfg.json
+_fastcm_local*.json
 *pending.sqlite*
 README.txt
 .fastwq_*_ankihub.json

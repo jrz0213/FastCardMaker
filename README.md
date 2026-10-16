@@ -25,6 +25,8 @@ AI can work with concepts, questions, study material and vocabulary. Prompts can
 
 AI 可用于概念、问题、学习材料及词汇。提示词支持多个字段，例如 `结合{{主题}}回答{{问题}}`。插件填充已有笔记，卡片显示方式由 Anki 模板决定。
 
+打开选项时检查本机与媒体配置的差异，并由用户选择覆盖或同步。词典路径和 API Key 只保存在本机。Settings differences are resolved explicitly when opening Options; dictionary paths and API keys remain local.
+
 ## 安装 / Install
 
 - AnkiWeb: [FastCard Maker](https://ankiweb.net/shared/info/962326418), code **962326418**.

@@ -1,6 +1,8 @@
 # -*- coding:utf-8 -*-
 """Small settings tabs; global AI styling is applied by successful query writes."""
 from copy import deepcopy
+import json
+from pathlib import Path
 from aqt import mw
 from aqt.qt import *
 from ..context import config
@@ -127,6 +129,10 @@ class SettingDialog(Dialog):
         tip = QLabel(tr('使用点亮星星的配置。只处理启用后新增笔记的空字段；上一批未结束时跳过本轮。Anki 关闭后停止。'))
         tip.setWordWrap(True)
         auto_layout.addWidget(tip)
+        self.read_config_button = QPushButton(tr('读取配置'))
+        self.read_config_button.clicked.connect(self.read_configuration)
+        auto_layout.addWidget(self.read_config_button)
+        self.configuration_loaded = False
         add_page(automatic, tr('通用设置'))
 
         advanced = QWidget()
@@ -161,6 +167,41 @@ class SettingDialog(Dialog):
         self.css_toggle.setArrowType(Qt.ArrowType.DownArrow if checked else Qt.ArrowType.RightArrow)
         if checked:
             self.resize(max(self.width(), 660), max(self.height(), 650))
+
+    def read_configuration(self):
+        from ..query.background import active_job
+        if active_job():
+            QMessageBox.information(self, tr('读取配置'), tr('请等待当前查询任务结束后再读取配置。'))
+            return
+        filename, _ = QFileDialog.getOpenFileName(self, tr('读取配置'), config.media_dir,
+                                                  tr('FastCard Maker 配置 (*.json)'))
+        if not filename:
+            return
+        try:
+            if Path(filename).suffix.lower() != '.json':
+                raise ValueError()
+            with open(filename, encoding='utf-8') as stream:
+                settings = json.load(stream)
+            if isinstance(settings, dict) and settings.get('format') in ('fastcm-local', 'fastcm-backup'):
+                settings = settings.get('settings')
+            from ..utils.config_storage import validate_settings
+            validate_settings(settings, importing=True)
+            answer = QMessageBox.question(self, tr('读取配置'),
+                tr('读取文件中的设置到本机？本机词典路径和 API Key 保留，媒体配置暂不覆盖。'),
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No)
+            if answer != QMessageBox.StandardButton.Yes:
+                return
+            config.import_settings(settings)
+        except (OSError, ValueError, TypeError):
+            QMessageBox.warning(self, tr('配置读取失败'), tr('无法读取配置文件，请检查文件格式或权限。原配置未重置。'))
+            return
+        from ..service.ai_config import clear_session_keys
+        clear_session_keys()
+        self.configuration_loaded = True
+        QMessageBox.information(self, tr('读取配置'),
+            tr('已读取到本机。下次打开选项时，可选择是否覆盖媒体配置。'))
+        self.reject()
 
     def reset(self):
         self.language_combo.setCurrentIndex(0)

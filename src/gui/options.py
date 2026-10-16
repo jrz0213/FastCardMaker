@@ -385,6 +385,12 @@ class OptionsDialog(Dialog):
             return
         dialog = SettingDialog(self, _('SETTINGS'))
         dialog.exec()
+        if dialog.configuration_loaded:
+            self._is_dirty = False
+            self.dict_services = self.controller.preview_services()
+            self.build_tabs_layout()
+            self.update_log_btn_text()
+            self._updater.request()
         dialog.destroy()
 
     def retry_dictionaries(self):

@@ -15,6 +15,10 @@ from .result import QueryResult
 
 class MdxService(MdxMediaMixin, LocalService):
     def __init__(self, dict_path):
+        binding = getattr(type(self), '__dict_binding__', None)
+        if binding:
+            from .dictionary_binding import resolve_dictionary
+            dict_path = resolve_dictionary(binding['file'], binding['title'])
         super(MdxService, self).__init__()
         self.dict_path = dict_path
         self.media_cache = defaultdict(set)

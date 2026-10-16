@@ -10,6 +10,30 @@ import test_modularization as support
 
 
 class ConfigSyncTests(unittest.TestCase):
+    def test_key_backup_defaults_on_can_restore_and_can_be_disabled(self):
+        store = self.host.load('service.ai_store')
+        store.config = self.config
+        profile = {'id': 'demo', 'name': 'Demo', 'model': 'test', 'base_url': 'https://example.test/responses'}
+        store.write_settings({'profiles': [profile], 'keys': {'demo': 'test-only-secret'}})
+        self.assertEqual(json.loads(self.media.read_text())['credential_backup'], {'demo': 'test-only-secret'})
+        store.settings_path().unlink()
+        self.assertEqual(store.read_settings()['keys']['demo'], 'test-only-secret')
+        self.config.update({'backup_api_keys': False, 'credential_backup': {}})
+        store.write_settings({'profiles': [profile], 'keys': {'demo': 'test-only-secret'}})
+        self.assertNotIn('test-only-secret', self.media.read_text())
+
+    def test_old_fastwq_settings_are_read_but_only_new_filename_is_written(self):
+        legacy = self.media.parent / '_fastwqcfg.json'
+        legacy.parent.mkdir(parents=True, exist_ok=True)
+        legacy.write_text(json.dumps({'thread_number': 7, 'dirs': ['old-local-folder']}))
+        before = legacy.read_bytes()
+        reopened = self.context.Config(self.host.mw)
+        self.assertEqual(reopened.thread_number, 7)
+        reopened.update({'thread_number': 8})
+        self.assertEqual(legacy.read_bytes(), before)
+        self.assertEqual(json.loads(self.media.read_text())['thread_number'], 8)
+        self.assertEqual(self.context.Config(self.host.mw).thread_number, 8)
+
     def test_note_type_ids_from_browser_menu_are_normalized_to_json_keys(self):
         self.config.update({123: []})
         self.assertEqual(self.config.get_maps(123), [])
@@ -122,7 +146,7 @@ class ConfigSyncTests(unittest.TestCase):
         store.config = self.config
         profile = {'id': 'demo', 'name': 'Demo', 'model': 'test'}
         store.write_settings({'profiles': [profile], 'keys': {'demo': 'local-secret'}, 'requests_per_minute': 30})
-        self.assertNotIn('local-secret', self.media.read_text())
+        self.assertEqual(json.loads(self.media.read_text())['credential_backup']['demo'], 'local-secret')
         self.assertEqual(json.loads(self.media.read_text())['ai_settings']['profiles'], [profile])
         self.assertTrue(store.settings_path().is_relative_to(Path(self.host.mw.pm.profileFolder())))
         self.write_media({'ai_settings': {'profiles': [dict(profile, name='Remote')], 'requests_per_minute': 15}})
@@ -171,4 +195,4 @@ class ConfigSyncTests(unittest.TestCase):
         self.assertEqual(legacy.read_bytes(), original)
         self.assertTrue(store.settings_path().exists())
         fresh.resolve_settings('overwrite')
-        self.assertNotIn('legacy-secret', self.media.read_text())
+        self.assertEqual(json.loads(self.media.read_text())['credential_backup']['demo'], 'legacy-secret')

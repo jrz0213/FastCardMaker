@@ -8,13 +8,14 @@ import tempfile
 
 LOCAL_KEYS = {'dirs', 'last_folder', 'last_model', '_auto_run_state', 'version',
               'path', 'dict_path', 'mdx_path', 'script_path', 'script_paths',
-              'api_key', 'keys', 'ai_thread_number'}
+              'api_key', 'keys', 'ai_thread_number', 'script_library', 'dictionary_javascript'}
 
 
 def portable(value):
     if isinstance(value, dict):
         return {key: deepcopy(item) if key == 'parameters' else portable(item) for key, item in value.items()
-                if key not in LOCAL_KEYS and not key.endswith('_last')}
+                if key not in LOCAL_KEYS and not key.endswith('_last') and
+                not (key == 'credential_backup' and value.get('backup_api_keys') is False)}
     if isinstance(value, list):
         return [portable(item) for item in value]
     return deepcopy(value)

@@ -174,6 +174,10 @@ def add_dict_layout(self, i, **kwargs):
     field_combo.editTextChanged.connect(capture_field)
 
 def fill_dict_combo_options(self, dict_combo, current_unique, services):
+    from ..service import service_manager
+    aliases = getattr(service_manager, 'aliases', {})
+    if isinstance(aliases, dict):
+        current_unique = aliases.get(current_unique, current_unique)
     dict_combo.clear()
     if not current_unique:
         dict_combo.addItem(tr('未选择来源'), userData=None)

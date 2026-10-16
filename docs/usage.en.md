@@ -124,7 +124,7 @@ Opening **FastCM → Options** compares local settings with the copy in the medi
 - **Sync:** read the media-folder copy into this device.
 - **Cancel:** keep both copies and continue using local settings. Subsequent edits stay local until the difference is resolved.
 
-Field mappings, AI connections without keys, parameters and CSS are stored in `_fastcmcfg.json` in the media folder for Anki synchronization. The working local copy is `_fastcm_local.json` in the current profile folder. Dictionary folders, machine-specific paths and automatic-task progress remain local. API keys are stored in the profile’s `fastcm/ai/config.json`. The first upgrade reads existing configuration without overwriting it with defaults.
+Field mappings, AI connections, parameters and CSS are stored in `_fastcmcfg.json` in the media folder. The working local copy is `_fastcm_local.json` in the current profile. Dictionary folders and machine-specific paths remain local. API keys are stored locally in `fastcm/ai/config.json`; the General settings switch controls whether they are also included in shared configuration, enabled by default.
 
 To import an existing JSON configuration, open **Plugin settings → General settings → Read configuration**. The file picker starts in the media folder, allows other locations, and filters for JSON files. Confirming loads settings locally and refreshes field configuration, while keeping local dictionary paths and keys. On the next Options opening, choose whether to overwrite the media-folder copy. There is no manual backup button.
 
@@ -156,7 +156,7 @@ Click **AI parse** beside the dictionary:
 
 ![Samples, command and source attachments](images/user-guide/en-script-generator.png)
 
-### 3. Debug, continue the conversation and import sessions
+### 3. Debug and continue the conversation
 
 Enable **Auto debug** before generation or click **Debug once** afterward. Read results in **Information history**; expand failures to inspect the word, field and error. Debugging does not change cards and covers only the generated export methods and three samples. Test a few notes after saving.
 
@@ -165,7 +165,6 @@ Enable **Auto debug** before generation or click **Debug once** afterward. Read 
 - Enter a follow-up in the input below and click **Send message**, such as “Fix audio paths using the debug errors and keep the other fields.”
 - Select **Include all conversation turns** for context and **Include latest debug result** for error-based repairs.
 - Messages initially show up to five lines. Use **Expand / Collapse** to read them. Use **Copy all** or **Export Markdown** to share full records.
-- Every new window starts a session. **Import earlier session** lets you select records for the same dictionary.
 - After an AI revision, inspect the preview and **Save script** again. Use **Restore old script** to undo a script change; recycled backups are kept for seven days.
 
 History and source attachments increase token usage and may exceed the model limit. If needed, disable history or start a new session. 
@@ -179,3 +178,20 @@ History and source attachments increase token usage and may exceed the model lim
 - **Connection or parameter error:** check the key, model, complete endpoint. If the API rejects a parameter, remove it from the JSON under More settings and retry.
 - **Missing dictionary content or audio:** restore the MDX, associated MDD and resource paths, then rescan. For dictionaries whose JS changes audio paths, send both HTML and JS when generating a parser, then debug and test a few notes.
 - **Background window disappeared:** reopen FastCM → Task progress. Minimizing keeps the task running; closing Anki stops further requests. Cached replies can be recovered on the next launch.
+
+
+### Script backup and recovery
+
+Bundled, imported and AI-generated Python dictionary parsers are backed up to `_fastcm_scripts.zip` in the media folder and sync with Anki media. Runtime copies live in `fastcm/scripts` within the current Anki profile. Dictionary JavaScript stays with the dictionary; select Send JS when AI analysis needs it. Folder scans no longer import adjacent Python files. Use **Dictionary manager → Import script** instead.
+
+Opening Options checks script content fingerprints. If versions differ, entering dictionary or AI settings shows a file chooser with **Local version / Backup version**, defaulting to Backup. Header checkboxes select an entire side; individual rows can then be changed. Each side shows its size and **Open**, which displays read-only source inside the add-on without executing it. Selecting a missing side deletes the file, with confirmation. If no ZIP exists, current scripts create the first backup. Matching copies update automatically when a script is saved; differing copies require a choice.
+
+Parsers identify MDX files by filename stem and internal title, rather than absolute paths. Re-add a moved dictionary folder and rescan. Multiple matching files require you to adjust imported folders; the first match is never silently chosen. Removing a folder preserves scripts and field mappings.
+
+![Choose local or backup scripts](images/user-guide/en-script-comparison.png)
+
+### Saving settings and API keys
+
+Settings keep an opening snapshot in memory. Closing, Cancel or Esc exits immediately if values match; otherwise choose **Save / Discard / Cancel**. Changing a value back does not count as an edit. FastCard Maker settings take precedence; when absent, legacy FastWQ settings are read. Subsequent saves write `_fastcmcfg.json`, preserving the old file.
+
+**Plugin settings → General settings → Include API keys in backup** is enabled by default. Keys are stored as plaintext in the shared JSON and sync with media. Disable it to remove keys from shared settings while retaining local credentials. Restored connections without a key display “Missing API Key”; enter the key to use them. AI chat and debug messages remain in the current window only and are not automatically saved to disk or included in the ZIP.

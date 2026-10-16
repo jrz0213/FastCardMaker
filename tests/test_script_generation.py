@@ -98,10 +98,10 @@ class ScriptGenerationTests(unittest.TestCase):
         builder = self.builder
         class Base:
             def __init__(self, path):
-                self.builder, self.word = builder, 'word0'
+                self.builder, self.word, self.dict_path = builder, 'word0', path
             def adapt_to_anki(self, content):
                 return 'ADAPTED:' + content
-        values = {'MdxService': Base, 'register': lambda labels: lambda cls: cls,
+        values = {'resolve_dictionary': lambda filename, title: filename + '.mdx', 'MdxService': Base, 'register': lambda labels: lambda cls: cls,
                   'export': lambda labels: lambda fn: fn, 'json': json,
                   'extract_required': self.engine.extract_required, 'resolve_entry': self.engine.resolve_entry,
                   'adapt_extracted': self.engine.adapt_extracted}
@@ -556,7 +556,7 @@ class ScriptGenerationTests(unittest.TestCase):
             dialog.ready({'error': 'Bad rules', 'record': record})
             dialog.ready({'error': 'Second failure', 'record': dict(record, response='second reply')})
         self.assertIn('Second failure', dialog.status.text())
-        self.assertIn('未能保存', dialog.status.text())
+        self.assertIn('Second failure', dialog.status.text())
         self.assertEqual(len(dialog.conversations), 2)
         self.assertIn('invalid JSON', dialog.conversation.toPlainText())
         self.assertIn('second reply', dialog.conversation.toPlainText())
@@ -696,8 +696,8 @@ class Old(MdxService):
         self.assertEqual(result['record']['state'], 'cancelled')
         self.assertTrue(result['record']['response'])
         records = self.host.load('service.script_information').load_history(self.temp.name, module.dictionary_identity(service.dict_path))
-        self.assertEqual(len(records), 1)
-        self.assertEqual(records[0]['state'], 'cancelled')
+        self.assertEqual(records, [])
+        self.assertEqual(result['record']['state'], 'cancelled')
 
     def test_cancelling_updates_visible_request_and_missing_dictionary_debug_keeps_record_id(self):
         module = self.host.load('gui.script_generator')
@@ -754,8 +754,8 @@ class Old(MdxService):
         self.assertEqual(module.compact_history(second.conversations)[1]['content'], 'complete reply')
         self.assertIsNone(second.result)
         old = module.load_history(self.temp.name, original['dictionary_id'], session_id=first.session_id)
-        self.assertEqual(len(old), 1)
-        self.assertEqual(old[0]['id'], original['id'])
+        self.assertEqual(old, [])
+        self.assertTrue(first.conversations)
 
     def test_conversation_is_a_single_ordered_escaped_role_transcript(self):
         module = self.host.load('gui.script_generator')

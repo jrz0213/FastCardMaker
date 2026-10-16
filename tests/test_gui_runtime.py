@@ -19,6 +19,40 @@ import test_modularization as support
 
 @unittest.skipUnless(importlib.util.find_spec('PyQt6'), 'PyQt6 is not installed')
 class GuiRuntimeTests(unittest.TestCase):
+    def test_script_compare_defaults_to_backup_and_headers_choose_exclusively(self):
+        module = self.load('gui.script_compare')
+        dialog = module.ScriptCompareDialog(None, {'a.py': {'source': 'x=1'}},
+                                            {'a.py': {'source': 'x=2'}, 'b.py': {'source': 'x=3'}})
+        self.widgets.append(dialog)
+        self.assertTrue(all(checks[1].isChecked() for _, checks, _ in dialog.rows))
+        dialog.heads[0].click()
+        self.assertTrue(all(checks[0].isChecked() and not checks[1].isChecked() for _, checks, _ in dialog.rows))
+        dialog.rows[0][1][1].click()
+        self.assertEqual(dialog.heads[0].checkState(), self.qt.Qt.CheckState.PartiallyChecked)
+        self.assertEqual(dialog.table.columnCount(), 3)
+        captured = []
+        def inspect(viewer):
+            editor = viewer.findChild(self.qt.QPlainTextEdit)
+            captured.append((editor.isReadOnly(), editor.toPlainText()))
+            return 0
+        with patch.object(module.Dialog, 'exec', inspect):
+            dialog.view('a.py', dialog.backup)
+        self.assertEqual(captured, [(True, 'x=2')])
+
+    def test_settings_return_to_initial_values_closes_without_save_prompt(self):
+        self.background_host()
+        sys.modules.pop(support.PACKAGE + '.gui.setting', None)
+        dialog = self.load('gui.setting').SettingDialog(None)
+        self.widgets.append(dialog)
+        before = dialog.ai_retries.value()
+        dialog.ai_retries.setValue((before + 1) % 6)
+        self.assertNotEqual(dialog.widget_values(), dialog._initial_values)
+        dialog.ai_retries.setValue(before)
+        self.assertEqual(dialog.widget_values(), dialog._initial_values)
+        with patch.object(self.load('gui.base'), 'QMessageBox') as question:
+            dialog.reject()
+        question.assert_not_called()
+
     def test_option_sync_buttons_have_explicit_local_and_media_directions(self):
         self.background_host()
         module = self.load('gui.config_sync')
@@ -187,6 +221,7 @@ class GuiRuntimeTests(unittest.TestCase):
             jobs.cancel_jobs(wait=True)
         for widget in self.widgets:
             widget._is_dirty = False
+            widget._snapshot_reader = None  # Cleanup does not exercise the save prompt.
             if hasattr(widget, '_stop_loading'):
                 widget.done(self.qt.QDialog.DialogCode.Rejected)
             else:
@@ -1736,7 +1771,7 @@ class GuiRuntimeTests(unittest.TestCase):
             common.config_menu()
             self.assertEqual([a.text() for a in root.menuBar().actions()], ['帮助', 'FastCM'])
             menu = root.menuBar().actions()[-1].menu()
-            self.assertEqual([a.text() for a in menu.actions()], ['全类型查询', 'OPTIONS', '任务进度', 'ABOUT'])
+            self.assertEqual([a.text() for a in menu.actions()], ['全类型查询', 'OPTIONS', '后台任务：暂无任务', 'ABOUT'])
             menu.actions()[0].trigger()
             show.assert_called_once_with()
             show.reset_mock()
@@ -1908,6 +1943,7 @@ class GuiRuntimeTests(unittest.TestCase):
         self.assertEqual(restored.skill.toPlainText(), '只输出答案。')
         self.assertIn('0.6', restored.parameters.toPlainText())
         restored.skill.setPlainText('不要保存')
+        restored._snapshot_reader = None
         restored.reject()
         self.assertEqual(self.load('service.ai_config').profiles()[0]['skill'], '只输出答案。')
 
@@ -1976,7 +2012,7 @@ class GuiRuntimeTests(unittest.TestCase):
         dialog.key.setText('old-key')
         dialog.provider.setCurrentIndex(dialog.provider.findData('gemini'))
         self.assertEqual(dialog.mode.currentData(), 'interactions')
-        self.assertEqual(dialog.list.item(0).text(), 'Gemini')
+        self.assertEqual(dialog.list.item(0).text(), 'Gemini (缺失 API Key)')
         self.assertEqual(dialog.key.text(), '')
         dialog.provider.setCurrentIndex(dialog.provider.findData('claude'))
         self.assertEqual(dialog.mode.currentData(), 'messages')
@@ -1997,6 +2033,7 @@ class GuiRuntimeTests(unittest.TestCase):
         self.widgets.append(cancelled)
         self.assertEqual(cancelled.key.text(), 'only-in-memory')
         cancelled.key.setText('discard-me')
+        cancelled._snapshot_reader = None  # This test checks discarded keys, not the confirmation UI.
         cancelled.reject()
         self.assertNotIn('discard-me', str(credentials._session_keys))
         self.assertEqual(credentials.session_key(profile_id), 'only-in-memory')

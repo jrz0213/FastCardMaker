@@ -45,17 +45,20 @@ class DictManageDialog(Dialog):
         self._choices = deepcopy(config.dicts)
 
         # 全局统一的脚本目录路径
-        self.plugin_dict_folder = os.path.join(
-            os.path.dirname(os.path.dirname(__file__)), 'service', 'dict'
-        )
+        from ..service.script_library import script_directory
+        self.plugin_dict_folder = str(script_directory())
 
         self.build()
+        self._initial_dictionary_values = self.dictionary_values()
+
+    def dictionary_values(self):
+        return (tuple((row['unique'], row['check_btn'].isChecked()) for row in self._options), self.folders.folder_values())
 
     def reject(self):
         """
         重写关闭事件：只有内容被修改过（_is_dirty == True）时才弹窗拦截
         """
-        if not (getattr(self, '_is_dirty', False) or self.folders._is_dirty):
+        if self.dictionary_values() == self._initial_dictionary_values:
             super(DictManageDialog, self).reject()  # 没修改过，静默退出
             return
 
@@ -107,6 +110,7 @@ class DictManageDialog(Dialog):
                 script = next(iter(group['script_paths']), '')
                 self.add_dict_layout(len(seen) - 1, title=title, unique=factory.__unique__, path=script,
                     mdx_path=group['dict_path'], script_paths=group['script_paths'], uniques=group['uniques'],
+                    binding_status=group.get('binding_status', ''), dictionary_title=group.get('dictionary_title', ''),
                     enabled=any(self._choices.get(unique, {}).get('enabled', False) for unique in group['uniques']))
             self.dicts_layout.setRowStretch(len(seen), 1)
         self.enabled_all_update()
@@ -135,6 +139,10 @@ class DictManageDialog(Dialog):
 
     def _detected(self, result):
         if not self._closed:
+            from ..service.script_library import publish, migrate_configuration
+            self._choices = migrate_configuration({'dicts': self._choices},
+                getattr(result['registry'], 'aliases', {}))['dicts']
+            publish(self.plugin_dict_folder)
             self.populate_dictionaries(result['registry'])
             self.scan_label.setText(tr('检测完成，新词典默认未勾选；保存后应用。'))
 
@@ -148,11 +156,40 @@ class DictManageDialog(Dialog):
             self.detect_button.setEnabled(True)
 
     def generate_script(self, dict_path, script_paths=None, class_name=None):
+        from .script_compare import check_scripts
+        if not check_scripts(self):
+            return
         from .script_generator import ScriptGeneratorDialog
         dialog = ScriptGeneratorDialog(self, dict_path, script_paths, class_name)
         dialog.saved.connect(lambda *_: self.detect_directories())
         dialog.exec()
         dialog.deleteLater()
+
+    def import_script(self):
+        from .script_compare import check_scripts
+        if not check_scripts(self):
+            return
+        filename, _ = QFileDialog.getOpenFileName(self, tr('导入脚本'), '', 'Python (*.py)')
+        if not filename:
+            return
+        from pathlib import Path
+        from ..service.dictionary_binding import portable_source
+        from ..service.script_library import validate, publish
+        try:
+            source = portable_source(Path(filename).read_text(encoding='utf-8-sig'))
+            name = Path(filename).name
+            validate({name: {'source': source}})
+            target = Path(self.plugin_dict_folder) / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists():
+                from ..service.script_updates import replace_script
+                replace_script(target, source, target.read_text(encoding='utf-8'), target.parent)
+            else:
+                target.write_text(source, encoding='utf-8')
+            publish(target.parent)
+            self.detect_directories()
+        except (OSError, ValueError, SyntaxError) as error:
+            QMessageBox.warning(self, tr('导入脚本'), str(error))
 
     def done(self, result):
         self._closed = True
@@ -216,13 +253,21 @@ class DictManageDialog(Dialog):
         label_layout.setSpacing(2)
         label_layout.addWidget(check_btn)
         dict_path = kwargs.get('mdx_path', '')
-        missing_label = QLabel(tr('未找到本地词典文件'))
+        missing_label = QLabel(tr('存在多个匹配的词典文件，请调整导入目录') if kwargs.get('binding_status') == 'ambiguous'
+                              else tr('未找到本地词典文件'))
         font = missing_label.font()
         font.setPointSize(max(8, font.pointSize() - 2))
         missing_label.setFont(font)
         missing_label.setStyleSheet('color: palette(mid);')
         missing_label.setVisible(not bool(dict_path and os.path.isfile(dict_path)))
         label_layout.addWidget(missing_label)
+        internal_title = kwargs.get('dictionary_title', '')
+        if internal_title and internal_title != title.split(' · ')[0]:
+            detail = QLabel(internal_title)
+            detail.setFont(font)
+            detail.setStyleSheet('color: palette(mid);')
+            detail.setWordWrap(True)
+            label_layout.addWidget(detail)
         self.dicts_layout.addWidget(label_box, i, 0)
         self.dicts_layout.addWidget(edit_btn, i, 1)
         generate_btn = QPushButton(tr('AI 解析'))

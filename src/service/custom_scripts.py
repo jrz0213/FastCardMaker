@@ -20,13 +20,8 @@ def process_and_copy_custom_py(mdx_path, py_path, dict_folder_path, enable=True)
     with open(py_path, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    safe_mdx_path = mdx_path.replace('\\', '/')
-    content = re.sub(
-        r"^DICT_PATH\s*=.*$",
-        f"DICT_PATH = r'{safe_mdx_path}'",
-        content,
-        flags=re.MULTILINE
-    )
+    from .dictionary_binding import portable_source
+    content = portable_source(content, mdx_path)
 
     def sanitize_register(match):
         text = match.group(0)
@@ -66,39 +61,3 @@ def process_and_copy_custom_py(mdx_path, py_path, dict_folder_path, enable=True)
         config.update({'dicts': dicts_conf})
     logger.info(f"脚本自动同步成功 | 词典: [{dict_name}] | 目标文件: [{os.path.basename(dest_py_path)}]")
     return match.group(1) if match else None
-
-
-def sync_folder_scripts(folders, dict_folder_path, cancelled):
-    """Synchronize a saved folder snapshot without writing profile configuration."""
-    enabled = set()
-    for folder in folders:
-        for root, _, files in os.walk(folder):
-            if cancelled():
-                return enabled
-            for filename in files:
-                if cancelled():
-                    return enabled
-                if filename.lower().endswith('.mdx'):
-                    mdx_path = os.path.join(root, filename)
-                    py_path = os.path.splitext(mdx_path)[0] + '.py'
-                    if os.path.isfile(py_path):
-                        unique = process_and_copy_custom_py(mdx_path, py_path, dict_folder_path, enable=False)
-                        if unique:
-                            enabled.add(unique)
-    # Retain the previous folder manager's cleanup of scripts for removed folders.
-    active = [os.path.normcase(os.path.abspath(folder)) for folder in folders]
-    for filename in os.listdir(dict_folder_path):
-        if cancelled():
-            return enabled
-        if filename.endswith('.py') and filename != '__init__.py':
-            if filename.startswith(('fcm_ai_', 'fwq_ai_')):
-                continue  # User-saved adapters survive a missing/moved dictionary.
-            path = os.path.join(dict_folder_path, filename)
-            with open(path, encoding='utf-8') as file:
-                match = re.search(r"DICT_PATH\s*=\s*[rR]?['\"](.*?)['\"]", file.read())
-            if match:
-                target = os.path.normcase(os.path.abspath(match.group(1).replace('\\\\', '\\')))
-                if not any(target.startswith(folder + os.sep) for folder in active):
-                    os.remove(path)
-                    logger.info('Removed script for an inactive folder: %s', filename)
-    return enabled

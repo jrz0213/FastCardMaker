@@ -13,6 +13,30 @@ def redact(value, secret=''):
     return json.loads(text)
 
 
+def hide_local_paths(value, dictionary_path):
+    """Keep filenames in AI diagnostics without sending local root directories."""
+    from pathlib import Path
+    import tempfile
+    from ..utils.media import media_directory
+    roots = [(str(Path(dictionary_path).resolve().parent), '<dictionary>'),
+             (str(Path(media_directory()).parent), '<profile>'),
+             (str(Path(__file__).resolve().parent.parent), '<addon>'),
+             (tempfile.gettempdir(), '<temporary>')]
+    def clean(item):
+        if isinstance(item, str):
+            for root, label in sorted(roots, key=lambda pair: len(pair[0]), reverse=True):
+                for spelling in {root, root.replace('\\', '/'), root.replace('/', '\\')}:
+                    if len(spelling) > 3:
+                        item = item.replace(spelling, label)
+            return item
+        if isinstance(item, dict):
+            return {key: clean(content) for key, content in item.items()}
+        if isinstance(item, list):
+            return [clean(content) for content in item]
+        return item
+    return clean(value)
+
+
 def request_record(model, instructions, request, payload, user_message, dictionary_id):
     return {'id': uuid.uuid4().hex, 'kind': 'request', 'time': datetime.now(timezone.utc).isoformat(),
             'dictionary_id': dictionary_id, 'model': model, 'instructions': instructions,

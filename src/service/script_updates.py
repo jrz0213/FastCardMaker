@@ -131,7 +131,8 @@ def write_conversation(record, directory):
 
 
 def dictionary_identity(path):
-    return sha256(os.path.normcase(os.path.realpath(path)).encode('utf-8')).hexdigest()[:12]
+    from .dictionary_binding import descriptor, identity
+    return identity(descriptor(path))
 
 
 def original_scripts(paths):
@@ -153,7 +154,8 @@ def original_scripts(paths):
 
 
 def script_payload(originals):
-    return [{'name': Path(item['path']).name, 'source': item['source'][:SCRIPT_LIMIT],
+    from .dictionary_binding import portable_source
+    return [{'name': Path(item['path']).name, 'source': portable_source(item['source'])[:SCRIPT_LIMIT],
              'truncated': len(item['source']) > SCRIPT_LIMIT} for item in originals[:4]]
 
 

@@ -5,7 +5,6 @@ from aqt.qt import *
 from ..context import config
 from .base import Dialog
 from ..utils.logger import logger
-from ..service.custom_scripts import process_and_copy_custom_py
 from .folder_layout import build_folder_layout
 
 __all__ = ['FoldersManageDialog']
@@ -28,12 +27,16 @@ class FoldersManageDialog(Dialog):
             os.path.dirname(os.path.dirname(__file__)), 'service', 'dict'
         )
         self.build()
+        self._initial_folder_values = self.folder_values()
+
+    def folder_values(self):
+        return (tuple(self._current_folders), self.chk_use_filename.isChecked(), self.chk_export_media.isChecked())
 
     def reject(self):
         """
         重写关闭事件：只有在内容被修改过（_is_dirty == True）时才弹窗拦截
         """
-        if not getattr(self, '_is_dirty', False):
+        if self.folder_values() == self._initial_folder_values:
             super(FoldersManageDialog, self).reject()  # 没修改过，静默退出
             return
 
@@ -85,20 +88,12 @@ class FoldersManageDialog(Dialog):
                     for file in files:
                         if file.lower().endswith('.mdx'):
                             mdx_path = os.path.join(root_dir, file)
-                            py_name = file[:-4] + '.py'
-                            py_path = os.path.join(root_dir, py_name)
                             display_name = os.path.relpath(mdx_path, folder)
 
                             mdx_node = QTreeWidgetItem(folder_node)
                             mdx_node.setText(0, f"📄 {display_name}")
                             mdx_node.setData(0, Qt.ItemDataRole.UserRole, mdx_path)
 
-                            if os.path.exists(py_path):
-                                mdx_node.setText(1, tr('✅ 就绪 (待保存)'))
-                                mdx_node.setForeground(1, QBrush(QColor("#2E7D32")))
-                            else:
-                                mdx_node.setText(1, tr('➖ 无 Python 脚本'))
-                                mdx_node.setForeground(1, QBrush(QColor("#9E9E9E")))
             except Exception as e:
                 logger.error(f"扫描目录树发生异常: {str(e)}")
                 continue

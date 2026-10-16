@@ -89,3 +89,8 @@ Qt 检查采用 `offscreen` 模式，不显示窗口，也不打开用户的 Ank
 
 这些检查不代表完整的 Anki 环境验证。真实收藏中的批量更新、外部网络词典
 的可用性和实际 MDX/MDD 文件仍需在对应环境中验证。
+
+
+## 可移植脚本与备份
+
+`service/dictionary_binding.py` 只读取有界 MDX 文件头，以文件名和内部标题关联本机目录。`service/script_library.py` 管理本机运行副本，`service/script_backup.py` 按排序后的文件清单比较内容指纹并原子更新媒体库 ZIP；配置继续写 JSON。`gui/script_compare.py` 提供互斥版本选择和只读查看。目录扫描不再同步相邻 Python 文件，也不因移除目录而删除脚本。AI 对话不自动落盘。

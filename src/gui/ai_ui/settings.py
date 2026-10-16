@@ -25,11 +25,19 @@ class AISettingsDialog(Dialog):
         self.current = -1
         build_settings_layout(self)
         for item in self.items:
-            self.list.addItem(item['name'])
+            self.list.addItem(item['name'] + ('' if self.keys.get(item['id']) else ' (' + tr('缺失 API Key') + ')'))
         if self.items:
             self.list.setCurrentRow(0)
         else:
             self.add_profile()
+        self.watch_changes(self.current_values)
+        self.key.textChanged.connect(lambda *_: self.update_name(self.name.text()))
+        self.update_name(self.name.text())
+
+    def current_values(self):
+        from copy import deepcopy
+        self.capture()
+        return deepcopy((self.items, self.keys))
 
     def open_settings_folder(self):
         try:
@@ -53,7 +61,8 @@ class AISettingsDialog(Dialog):
 
     def update_name(self, text):
         if self.current >= 0:
-            self.list.item(self.current).setText(text.strip() or tr('未命名'))
+            self.list.item(self.current).setText((text.strip() or tr('未命名')) +
+                ('' if self.key.text().strip() else ' (' + tr('缺失 API Key') + ')'))
 
     def capture(self):
         if self.current < 0:
@@ -66,7 +75,7 @@ class AISettingsDialog(Dialog):
                     skill=self.skill.toPlainText(), send_mode=self.send_mode.currentData())
         item.pop('max_tokens', None)
         self.keys[item['id']] = self.key.text().strip()
-        self.list.item(self.current).setText(item['name'] or tr('未命名'))
+        self.update_name(item['name'])
 
     def select_profile(self, index):
         self.capture()

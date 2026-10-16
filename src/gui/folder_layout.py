@@ -72,7 +72,7 @@ def build_folder_layout(self):
 
     self.tree = QTreeWidget()
     self.tree.setColumnCount(2)
-    self.tree.setHeaderLabels([tr('词典资源目录与文件'), tr('脚本解析状态')])
+    self.tree.setHeaderLabels([tr('词典资源目录与文件')])
     self.tree.setColumnWidth(0, 420)
     self.tree.setColumnWidth(1, 120)
     self.tree.setAlternatingRowColors(True)

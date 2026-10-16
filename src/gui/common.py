@@ -36,6 +36,9 @@ _open_options = []
 def show_fm_dialog(browser=None):
     '''open dictionary folder manager window'''
     parent = mw if browser is None else browser
+    from .script_compare import check_scripts
+    if not check_scripts(parent):
+        return
     fm_dialog = DictManageDialog(parent)
     fm_dialog.management_tabs.setCurrentIndex(2)
     fm_dialog.activateWindow()
@@ -49,6 +52,9 @@ def show_fm_dialog(browser=None):
 
 def show_dm_dialog(browser=None):
     parent = mw if browser is None else browser
+    from .script_compare import check_scripts
+    if not check_scripts(parent):
+        return
     dm_dialog = DictManageDialog(parent)
     dm_dialog.activateWindow()
     dm_dialog.raise_()
@@ -63,6 +69,11 @@ def show_options(browser=None, model_id=-1, callback=None, *args, **kwargs):
     '''open options window'''
     parent = mw if browser is None else browser
     config.read()
+    from ..service.script_backup import observe
+    try:
+        observe()
+    except (OSError, ValueError):
+        pass  # The script page presents archive errors without blocking settings.
     from .config_sync import check_settings
     if not check_settings(parent):
         return

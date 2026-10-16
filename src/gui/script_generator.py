@@ -72,12 +72,6 @@ class Generation:
             record['session_id'] = self.session_id
         record.setdefault('time', datetime.now(timezone.utc).isoformat())
         record.pop('storage_saved', None)
-        if self.record_directory:
-            try:
-                write_conversation(record, self.record_directory)
-                record['storage_saved'] = True
-            except (OSError, ValueError):
-                record['record_warning'] = tr('信息历史未能保存到文件，仍可在页面查看。')
         return record
 
     def load_services(self, cancelled=None, progress=None):
@@ -113,6 +107,8 @@ class Generation:
                 raise ValueError(tr('勾选的内容均未找到，未发送请求。'))
             prompt_data = json.loads(build_prompt(samples, self.names, javascript, self.command,
                                       script_payload(originals) if self.attachments['script'] else [], self.attachments['html']))
+            from ..service.dictionary_binding import descriptor
+            prompt_data['dictionary'] = dict(descriptor(self.path), filename=Path(self.path).name)
             prompt_data['attachments'] = dict(self.attachments, original_script_found=bool(originals),
                                                javascript_found=any('content' in item for item in javascript))
             if self.message:
@@ -127,6 +123,8 @@ class Generation:
                 if self.debug_result:
                     prompt_data['latest_debug'] = debug_feedback(self.debug_result)
             prompt_data = redact(prompt_data, self.connection.key)
+            from ..service.script_information import hide_local_paths
+            prompt_data = hide_local_paths(prompt_data, self.path)
             prompt = json.dumps(prompt_data, ensure_ascii=False)
             instructions = CHAT_INSTRUCTIONS if self.message else INSTRUCTIONS
             history = redact(self.history, self.connection.key)
@@ -216,12 +214,6 @@ class DebugOperation:
                       'error': str(error), 'error_type': type(error).__name__, 'traceback': traceback.format_exc()}
         if self.session_id:
             report['session_id'] = self.session_id
-        if self.record_directory:
-            try:
-                write_conversation(report, self.record_directory)
-                report['storage_saved'] = True
-            except (OSError, ValueError):
-                report['record_warning'] = tr('信息历史未能保存到文件，仍可在页面查看。')
         return {'debug_record': report}
 
 
@@ -244,7 +236,8 @@ class ScriptGeneratorDialog(Dialog):
     def __init__(self, parent, dict_path, script_paths=None, class_name=None):
         super().__init__(parent, tr('AI 生成词典脚本'))
         self.dict_path, self.token = dict_path, profile_token()
-        self.script_directory = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'service', 'dict')
+        from ..service.script_library import script_directory
+        self.script_directory = str(script_directory())
         if script_paths is None:
             fingerprint = dictionary_identity(dict_path)
             script_paths = sorted((path for prefix in ('fcm_ai_', 'fwq_ai_')
@@ -394,7 +387,9 @@ class ScriptGeneratorDialog(Dialog):
         restore.clicked.connect(self.restore_old_script)
         self.load_history_button = QPushButton(tr('导入之前的会话'))
         self.load_history_button.clicked.connect(self.begin_history)
-        for button in (self.load_history_button, open_history, trash, restore):
+        self.load_history_button.hide()
+        open_history.hide()
+        for button in (trash, restore):
             history_actions.addWidget(button)
         layout.addWidget(history_bar)
 
@@ -438,7 +433,7 @@ class ScriptGeneratorDialog(Dialog):
                                self.script_paths, self.class_name,
                                history=compact_history(self.conversations) if message and self.send_history.isChecked() else [],
                                message=message, current=self.result, debug=self.auto_debug.isChecked(),
-                               record_directory=self.script_directory,
+                               record_directory=None,
                                debug_result=self.last_debug if message and self.send_debug.isChecked() else None, session_id=self.session_id)
         self._secret_values.add(operation.connection.key)
         loader = self.loader = ScriptOperationThread(operation)
@@ -476,7 +471,7 @@ class ScriptGeneratorDialog(Dialog):
         if tuple(word.casefold() for word in words) == DEFAULT_SAMPLE_WORDS:
             words = []
         self._operation_kind = 'debug'
-        loader = self.loader = ScriptOperationThread(DebugOperation(self.dict_path, self.result, self.class_name, self.script_directory, words=words, session_id=self.session_id))
+        loader = self.loader = ScriptOperationThread(DebugOperation(self.dict_path, self.result, self.class_name, None, words=words, session_id=self.session_id))
         loader.finished_signal.connect(self.ready)
         loader.failed.connect(self.failed)
         loader.finished.connect(self.finished_loading)
@@ -531,12 +526,6 @@ class ScriptGeneratorDialog(Dialog):
         else:
             self.conversations[existing] = record
         warning = record.get('record_warning', '')
-        if not record.get('storage_saved'):
-            try:
-                write_conversation(record, self.script_directory)
-                record['storage_saved'] = True
-            except (OSError, ValueError):
-                warning = tr('信息历史未能保存到文件，仍可在页面查看。')
         self.render_conversation()
         return warning
 
@@ -741,6 +730,9 @@ class ScriptGeneratorDialog(Dialog):
     def save(self):
         if self.loader or not self.result or self._result_saved or self.token != profile_token():
             return
+        from .script_compare import check_scripts
+        if not check_scripts(self):
+            return
         directory = self.script_directory
         try:
             original = self.result.get('original')
@@ -748,6 +740,8 @@ class ScriptGeneratorDialog(Dialog):
                 path = replace_script(original['path'], self.result['source'], original['source'], directory)
             else:
                 path = save_script(self.result['filename'], self.result['source'], directory)
+            from ..service.script_library import publish
+            publish(directory, self.result.get('javascript'), self.dict_path)
         except ValueError as error:
             self.status.setText(str(error))
             return
@@ -778,6 +772,8 @@ class ScriptGeneratorDialog(Dialog):
             return
         try:
             path = restore_script(filename, self.script_directory)
+            from ..service.script_library import publish
+            publish(self.script_directory)
             self.result = None
             self.last_debug = None
             self._result_saved = False
@@ -793,4 +789,5 @@ class ScriptGeneratorDialog(Dialog):
         self._closed = True
         if self.loader:
             self.loader.stop()
+        self.conversations.clear()
         super().done(result)

@@ -47,7 +47,7 @@ def profiles():
 
 
 def profile_choices():
-    return [{'title': item['name'] + ' · ' + item['model'], 'unique': 'ai:' + item['id']}
+    return [{'title': item['name'] + ' · ' + item['model'] + ('' if session_key(item['id']) else ' (' + tr('缺失 API Key') + ')'), 'unique': 'ai:' + item['id']}
             for item in profiles()]
 
 
@@ -148,11 +148,11 @@ def transport_settings():
             (('timeout', 90), ('connect_timeout', 10), ('retries', 2))}
 
 
-def save_transport(rate, timeout, connect_timeout, retries):
+def save_transport(rate, timeout, connect_timeout, retries, backup_api_keys=None):
     values = dict(timeout=timeout, connect_timeout=connect_timeout, retries=retries)
     validate_profile(dict(name='transport', model='transport', base_url='https://example.invalid', mode='chat', **values))
     if type(rate) is not int or not 1 <= rate <= 600:
         raise ValueError(tr('每分钟发送数应为 1 到 600。'))
     data = read_settings()
     data.update(transport=values, requests_per_minute=rate)
-    write_settings(data)
+    write_settings(data, backup_api_keys=backup_api_keys)

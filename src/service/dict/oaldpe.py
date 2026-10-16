@@ -15,7 +15,10 @@ import random
 import hashlib
 from ..base import *
 
-DICT_PATH = r'C:/Users/jiang/Desktop/dict/oaldpe 10th/oaldpe.mdx'
+from ..dictionary_binding import resolve_dictionary
+DICT_FILE = 'oaldpe'
+DICT_TITLE = ''
+DICT_PATH = resolve_dictionary(DICT_FILE, DICT_TITLE)
 
 @register([u'本地词典-OALD10', u'MDX-OALD10'])
 class Oald10(MdxService):

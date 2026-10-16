@@ -17,7 +17,7 @@ def check_settings(parent):
         dialog.setWindowTitle(tr('配置不同'))
         dialog.setIcon(QMessageBox.Icon.Question)
         dialog.setText(tr('本机配置与媒体文件夹配置不同，请选择处理方式。'))
-        dialog.setInformativeText(tr('覆盖：本机 → 媒体文件夹；同步：媒体文件夹 → 本机；取消：保持不变。词典路径和 API Key 不参与同步。'))
+        dialog.setInformativeText(tr('覆盖：本机 → 媒体文件夹；同步：媒体文件夹 → 本机；取消：保持不变。词典路径仅存本机；API Key 是否同步取决于备份开关。'))
         dialog.setDetailedText('\n'.join(names))
         overwrite = dialog.addButton(tr('覆盖'), QMessageBox.ButtonRole.ActionRole)
         sync = dialog.addButton(tr('同步'), QMessageBox.ButtonRole.ActionRole)

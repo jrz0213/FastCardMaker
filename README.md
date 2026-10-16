@@ -25,7 +25,7 @@ AI can work with concepts, questions, study material and vocabulary. Prompts can
 
 AI 可用于概念、问题、学习材料及词汇。提示词支持多个字段，例如 `结合{{主题}}回答{{问题}}`。插件填充已有笔记，卡片显示方式由 Anki 模板决定。
 
-打开选项时检查本机与媒体配置的差异，并由用户选择覆盖或同步。词典路径和 API Key 只保存在本机。Settings differences are resolved explicitly when opening Options; dictionary paths and API keys remain local.
+打开选项时检查本机与媒体配置的差异，并由用户选择覆盖或同步。词典路径仅保存在本机；API Key 默认包含在配置备份中，可在通用设置关闭。Python 词典脚本单独同步到 `_fastcm_scripts.zip`，差异可逐文件选择本机或备份版本。Settings differences are resolved explicitly; dictionary paths stay local. API keys are included in settings backup by default (optional). Python parsers sync separately in `_fastcm_scripts.zip` with per-file version choices.
 
 ## 安装 / Install
 

@@ -20,7 +20,10 @@ MAPPINGS = [
     ['us', [re.compile(VOICE_PATTERN % r'ameProns')]]
 ]
 LANG_TO_REGEXPS = {lang: regexps for lang, regexps in MAPPINGS}
-DICT_PATH = u'/Users/brian/Documents/LDOCE5++ V 2-15/LDOCE5++ V 2-15.mdx' # u'E:\\BaiduYunDownload\\mdx\\L6mp3.mdx'
+from ..dictionary_binding import resolve_dictionary
+DICT_FILE = 'LDOCE5++ V 2-15'
+DICT_TITLE = ''
+DICT_PATH = resolve_dictionary(DICT_FILE, DICT_TITLE)
 
 
 @register([u'本地词典-LDOCE5++', u'MDX-LDOCE5++'])

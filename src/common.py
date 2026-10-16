@@ -215,7 +215,6 @@ def config_menu():
     class MainProgressAction(TaskMenuAction):
         def refresh(self):
             super().refresh()
-            self.setText(tr('任务进度'))
             self.setEnabled(True)
 
         def open_progress(self):

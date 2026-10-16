@@ -12,13 +12,10 @@ from ..utils.logger import logger
 
 def scan_registry(settings, cancelled):
     import os
-    scan_settings = SimpleNamespace(dirs=list(settings.dirs), dicts=deepcopy(settings.dicts))
+    scan_settings = SimpleNamespace(dirs=list(settings.dirs), dicts=deepcopy(settings.dicts),
+        script_library=deepcopy(getattr(config, 'data', {}).get('script_library', {})),
+        dictionary_bindings=deepcopy(getattr(config, 'data', {}).get('dictionary_bindings', {})))
     enabled = set()
-    if settings.folder_sync:
-        from .custom_scripts import sync_folder_scripts
-        enabled = sync_folder_scripts(settings.dirs, os.path.join(os.path.dirname(__file__), 'dict'), cancelled)
-        for unique in enabled:
-            scan_settings.dicts.setdefault(unique, {})['enabled'] = False
     from .manager import ServiceManager
     prepared = ServiceManager(settings=scan_settings, cancelled=cancelled)
     prepared.enabled_scripts = enabled
@@ -96,6 +93,21 @@ class RegistryUpdater(QObject):
                         dicts[unique] = {'enabled': False}
                 config.update({'dicts': dicts})
             self.manager.adopt(prepared)
+            from .script_library import migrate_configuration
+            data = migrate_configuration(getattr(config, 'data', {}), getattr(prepared, 'aliases', {}))
+            bindings = dict(data.get('dictionary_bindings', {}))
+            for factory in getattr(prepared, 'mdx_services', []):
+                if getattr(factory, '__binding__', {}).get('title'):
+                    bindings[factory.__unique__] = factory.__binding__
+            if bindings:
+                data['dictionary_bindings'] = bindings
+            if data != getattr(config, 'data', {}):
+                config.update(data)
+            from .script_backup import auto_publish
+            try:
+                auto_publish()
+            except (OSError, ValueError):
+                logger.exception('Script backup could not be initialized; keeping local scripts')
             self.pool.clean()
             self.updated.emit()
 

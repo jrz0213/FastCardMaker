@@ -3,6 +3,7 @@
 from ..translations import text as tr
 
 from aqt import mw
+from copy import deepcopy
 from aqt.qt import *
 
 from ..lang import _
@@ -188,7 +189,9 @@ class OptionsDialog(Dialog):
 
     def reject(self):
         """窗口关闭拦截：脏标记检测与安全退出"""
-        if not getattr(self, '_is_dirty', False):
+        changed = (self.mapping_values() != self._initial_mapping_values if hasattr(self, '_initial_mapping_values')
+                   else getattr(self, '_is_dirty', False))
+        if not changed:
             self.done(QDialog.DialogCode.Rejected)
             return
 
@@ -255,6 +258,8 @@ class OptionsDialog(Dialog):
         viewed = viewed if type(viewed) is int and 0 <= viewed < len(self.tabs) else self.default_tab_index
         self.changedTab(viewed)
         self.tab_widget.setCurrentIndex(viewed)
+
+        self._initial_mapping_values = deepcopy(self.mapping_values())
 
         self._is_dirty = False
 
@@ -400,6 +405,9 @@ class OptionsDialog(Dialog):
                 LocalService.retry_build(service['path'])
 
     def show_ai_settings(self):
+        from .script_compare import check_scripts
+        if not check_scripts(self):
+            return
         from .ai_settings import AISettingsDialog
         from ..service.ai_config import profile_choices
         dialog = AISettingsDialog(self)
@@ -451,6 +459,11 @@ class OptionsDialog(Dialog):
         for tab in self.tabs:
             tab.commit_mapping()
         self._is_dirty = False
+        self._initial_mapping_values = deepcopy(self.mapping_values())
+
+    def mapping_values(self):
+        return {'def': self.default_tab_index, 'auto': self.auto_tab_index,
+                'list': [{'name': self.tab_widget.tabText(i), 'fields': tab.data} for i, tab in enumerate(self.tabs)]}
 
     def accept(self):
         if self.save() is False:

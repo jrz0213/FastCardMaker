@@ -37,11 +37,12 @@ class TypeQueryDialog(QDialog):
         self.rows, self.notes, self.plan = [], [], []
         self.preparing = False
         layout = QVBoxLayout(self)
-        note = QLabel(tr('勾选笔记类型并选择已保存的配置。点击查询后，处理这些类型的全部笔记，不限牌组或浏览器选中项。'))
+        note = QLabel(tr('选择笔记类型及配置，查询这些类型的全部笔记。'))
         note.setWordWrap(True)
         layout.addWidget(note)
         self.types = QTreeWidget()
-        self.types.setHeaderLabels([tr('笔记类型'), tr('配置')])
+        self.types.setHeaderLabels([tr('选择笔记类型'), tr('使用的配置')])
+        self.types.setStyleSheet('QTreeWidget::item { padding: 7px 4px; } QHeaderView::section { padding: 8px; font-weight: bold; }')
         self.types.setRootIsDecorated(False)
         self.types.header().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         for model in sorted(mw.col.models.all(), key=lambda m: m['name']):
@@ -56,15 +57,16 @@ class TypeQueryDialog(QDialog):
             combo.setCurrentIndex(default if type(default) is int and 0 <= default < len(choices) else 0)
             self.types.setItemWidget(item, 1, combo)
             self.rows.append((model, item, combo))
+            combo.setEnabled(item.checkState(0) == Qt.CheckState.Checked)
         layout.addWidget(self.types)
         self.status = QLabel()
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
         buttons = QHBoxLayout()
         buttons.addStretch()
-        self.query_button = QPushButton(tr('查询'))
+        self.query_button = QPushButton(tr('开始查询'))
         self.query_button.clicked.connect(self.run)
-        close = QPushButton(tr('关闭'))
+        close = QPushButton(tr('取消'))
         close.clicked.connect(self.close)
         buttons.addWidget(self.query_button)
         buttons.addWidget(close)
@@ -72,6 +74,17 @@ class TypeQueryDialog(QDialog):
         self.loader = QTimer(self)
         self.loader.setInterval(0)
         self.loader.timeout.connect(self.gather)
+        self.types.itemChanged.connect(self.selection_changed)
+        self.selection_changed()
+
+    def selection_changed(self, *_):
+        selected = 0
+        for _, item, combo in self.rows:
+            checked = item.checkState(0) == Qt.CheckState.Checked
+            combo.setEnabled(checked)
+            selected += checked
+        self.query_button.setEnabled(bool(selected) and not self.preparing)
+        self.status.setText(tr('已选择 %s 个笔记类型') % selected)
 
     def run(self):
         if self.preparing or self.token != profile_token():

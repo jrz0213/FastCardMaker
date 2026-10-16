@@ -70,6 +70,7 @@ class SettingDialog(Dialog):
         panel_layout.setContentsMargins(0, 0, 0, 0)
         general_layout.addWidget(QLabel(tr('生效的笔记类型（默认全选，开启 CSS 注入后生效）')))
         self.style_types = QListWidget()
+        self.style_types.setStyleSheet('QListWidget::item { padding-left: 8px; }')
         self.style_types.setMaximumHeight(95)
         styles = getattr(config, 'ai_styles', {})
         styles = styles if isinstance(styles, dict) else {}
@@ -118,6 +119,7 @@ class SettingDialog(Dialog):
         interval.addWidget(self.auto_interval)
         auto_layout.addLayout(interval)
         self.auto_models = QListWidget()
+        self.auto_models.setStyleSheet('QListWidget::item { padding-left: 8px; }')
         selected = {str(v) for v in settings.get('model_ids', [])}
         for model in mw.col.models.all():
             item = QListWidgetItem(model['name'], self.auto_models)
@@ -133,6 +135,9 @@ class SettingDialog(Dialog):
         self.read_config_button.clicked.connect(self.read_configuration)
         auto_layout.addWidget(self.read_config_button)
         self.configuration_loaded = False
+        self.backup_api_keys = QCheckBox(tr('将 API Key 包含在备份中（明文，随媒体同步）'))
+        self.backup_api_keys.setChecked(bool(getattr(config, 'data', {}).get('backup_api_keys', True)))
+        auto_layout.addWidget(self.backup_api_keys)
         add_page(automatic, tr('通用设置'))
 
         advanced = QWidget()
@@ -161,6 +166,7 @@ class SettingDialog(Dialog):
         buttons.rejected.connect(self.reject)
         buttons.button(QDialogButtonBox.StandardButton.Reset).clicked.connect(self.reset)
         outer.addWidget(buttons)
+        self.watch_changes(self.widget_values)
 
     def _toggle_css(self, checked):
         self.css_panel.setVisible(checked)
@@ -180,8 +186,8 @@ class SettingDialog(Dialog):
         try:
             if Path(filename).suffix.lower() != '.json':
                 raise ValueError()
-            with open(filename, encoding='utf-8') as stream:
-                settings = json.load(stream)
+            from ..utils.config_storage import read_object
+            settings = read_object(filename)
             if isinstance(settings, dict) and settings.get('format') in ('fastcm-local', 'fastcm-backup'):
                 settings = settings.get('settings')
             from ..utils.config_storage import validate_settings
@@ -204,6 +210,7 @@ class SettingDialog(Dialog):
         self.reject()
 
     def reset(self):
+        self.backup_api_keys.setChecked(True)
         self.language_combo.setCurrentIndex(0)
         self.ai_send_mode.setCurrentIndex(0)
         self.ai_rate.setValue(29)
@@ -242,11 +249,16 @@ class SettingDialog(Dialog):
                 QMessageBox.warning(self, tr('AI 内容格式'), str(error))
                 return False
         try:
-            save_transport(self.ai_rate.value(), self.ai_timeout.value(), self.ai_connect_timeout.value(), self.ai_retries.value())
+            save_transport(self.ai_rate.value(), self.ai_timeout.value(), self.ai_connect_timeout.value(), self.ai_retries.value(),
+                           backup_api_keys=self.backup_api_keys.isChecked())
         except ValueError as error:
             QMessageBox.warning(self, tr('AI 设置'), str(error))
             return False
+        from ..service.ai_support.store import read_settings
+        credentials = read_settings().get('keys', {})
         config.update({
+            'backup_api_keys': self.backup_api_keys.isChecked(),
+            'credential_backup': credentials if self.backup_api_keys.isChecked() else {},
             'ui_language': self.language_combo.currentData(),
             'ai_send_mode': self.ai_send_mode.currentData(),
             'ai_markdown': self.ai_markdown.isChecked(),

@@ -33,28 +33,9 @@ class StabilityTests(unittest.TestCase):
     def pool(self, factory):
         return self.Pool(types.SimpleNamespace(get_service=factory))
 
-    def test_folder_script_sync_is_background_ready_and_preserves_config(self):
+    def test_folder_script_sync_is_no_longer_available(self):
         scripts = self.load('service.custom_scripts')
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            external, internal = root / 'external', root / 'internal'
-            external.mkdir()
-            internal.mkdir()
-            dictionary = external / 'sample.mdx'
-            dictionary.touch()
-            (external / 'sample.py').write_text(
-                "DICT_PATH = ''\n@register(['Sample'])\nclass Sample(Service): pass\n", encoding='utf-8')
-            (internal / 'removed.py').write_text(
-                "DICT_PATH = r'C:/removed/sample.mdx'\n", encoding='utf-8')
-            (internal / 'web.py').write_text('class Web: pass\n', encoding='utf-8')
-            before = deepcopy(self.config.dicts)
-            enabled = scripts.sync_folder_scripts([str(external)], str(internal), lambda: False)
-            self.assertEqual(enabled, {'Sample'})
-            self.assertIn(dictionary.as_posix(), (internal / 'sample.py').read_text(encoding='utf-8'))
-            self.assertFalse((internal / 'removed.py').exists())
-            self.assertTrue((internal / 'web.py').exists())
-            self.assertEqual(self.config.dicts, before)
-            self.config.update.assert_not_called()
+        self.assertFalse(hasattr(scripts, 'sync_folder_scripts'))
 
     def test_pool_reserves_slots_before_concurrent_initialization(self):
         created = []
@@ -411,26 +392,9 @@ class StabilityTests(unittest.TestCase):
             self.assertEqual(len(manager._get_available_local_services(loaded)[0]), 1)
             self.assertEqual(manager.local_custom_services[0].__dict_path__, str(path))
 
-    def test_external_script_path_resyncs_even_if_next_profiles_script_is_older(self):
+    def test_directory_scan_no_longer_imports_adjacent_python(self):
         module, manager = self.manager()
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            external = root / 'profile-B'
-            external.mkdir()
-            (external / 'sample.mdx').touch()
-            (external / 'sample.py').write_text("DICT_PATH = r'old.mdx'\nclass Sample: pass\n", encoding='utf-8')
-            internal = root / 'addon' / 'service' / 'dict'
-            internal.mkdir(parents=True)
-            (internal / 'sample.py').write_text("DICT_PATH = r'profile-A/sample.mdx'\nclass Sample: pass\n", encoding='utf-8')
-            os.utime(internal / 'sample.py', (time.time() + 10, time.time() + 10))
-            self.config.dirs = [str(external)]
-            realpath = os.path.realpath
-            with patch.object(module.os.path, 'realpath', side_effect=lambda path:
-                              str(root / 'addon' / 'service' / 'manager.py') if path == module.__file__ else realpath(path)):
-                manager._sync_external_scripts()
-            content = (internal / 'sample.py').read_text(encoding='utf-8')
-            self.assertIn(str(external / 'sample.mdx').replace('\\', '/'), content)
-            self.config.update.assert_not_called()
+        self.assertFalse(hasattr(manager, '_sync_external_scripts'))
 
     def test_service_rescan_invalidates_only_dictionary_script_modules(self):
         module, manager = self.manager()
@@ -438,8 +402,7 @@ class StabilityTests(unittest.TestCase):
         sys.modules[prefix + '.old'] = types.ModuleType(prefix + '.old')
         other = prefix + '_unrelated'
         sys.modules[other] = types.ModuleType(other)
-        with patch.object(manager, '_sync_external_scripts'), \
-                patch.object(manager, '_get_services_from_files', return_value=([], [], set())), \
+        with patch.object(manager, '_get_services_from_files', return_value=([], [], set())), \
                 patch.object(manager, '_get_available_local_services', return_value=([], [])):
             manager.update_services()
         self.assertNotIn(prefix + '.old', sys.modules)

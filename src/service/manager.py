@@ -4,6 +4,8 @@ import importlib
 import traceback  # 【新增】：用于提取详细的错误堆栈信息
 import sys
 import re
+import types
+from pathlib import Path
 from threading import RLock
 from hashlib import md5
 
@@ -11,6 +13,8 @@ from .base import LocalService, MdxService, StardictService, WebService, service
 from ..context import config
 # 引入全局日志对象
 from ..utils.logger import logger
+
+_SCAN_LOCK = RLock()
 
 
 class ServiceManager(object):
@@ -45,6 +49,8 @@ class ServiceManager(object):
             for name in ('web_services', 'local_services', 'local_custom_services', 'mdx_services',
                          'star_dict_services', 'loaded_scripts', 'supported_custom_paths', 'custom_sources'):
                 setattr(self, name, getattr(prepared, name))
+            self.aliases = getattr(prepared, 'aliases', {})
+            self.catalogue = getattr(prepared, 'catalogue', None)
             self.revision += 1
 
     @property
@@ -56,10 +62,18 @@ class ServiceManager(object):
             return self.web_services + self.local_services
 
     def update_services(self):
+        from .dictionary_binding import Catalogue, use_catalogue
+        self.catalogue = Catalogue(getattr(self.settings, 'dirs', []), getattr(self, '_cancelled', None))
+        self.aliases = {}
+        with _SCAN_LOCK, use_catalogue(self.catalogue):
+            self._update_services()
+
+    def _update_services(self):
         self._check_cancelled()
         from .script_updates import prune_old_scripts
         try:
-            prune_old_scripts(os.path.join(os.path.dirname(__file__), 'dict'))
+            from .script_library import script_directory
+            prune_old_scripts(script_directory())
         except (OSError, ValueError):
             logger.exception('Could not expire recycled dictionary scripts')
         logger.info("开始更新并重新扫描所有词典服务...")
@@ -67,7 +81,6 @@ class ServiceManager(object):
         # ===================================================
         # 🌟 核心修改：扫描外部目录，若发现同名 .py，则自动复制并覆盖内部
         # ===================================================
-        self._sync_external_scripts()
         prefix = __package__ + '.dict'
         for name in list(sys.modules):
             if name == prefix or name.startswith(prefix + '.'):
@@ -85,48 +98,11 @@ class ServiceManager(object):
         
         logger.info(f"服务更新完成 | 共加载: 网络词典 {len(self.web_services)} 个, 本地词典 {len(self.local_services)} 个 (含自定义 {len(self.local_custom_services)} 个)")
 
-    def _sync_external_scripts(self):
-        """自动从外部词典目录同步 .py 到内部 dict 目录并进行覆盖"""
-        import shutil
-        service_path = u'dict'
-        internal_dict_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), service_path)
-        
-        if not os.path.exists(internal_dict_path):
-            os.makedirs(internal_dict_path)
-            
-        for ext_dir in self.settings.dirs:
-            self._check_cancelled()
-            if not os.path.exists(ext_dir):
-                continue
-            for dirpath, _, filenames in os.walk(ext_dir):
-                for filename in filenames:
-                    self._check_cancelled()
-                    if filename.lower().endswith('.py'):
-                        ext_py = os.path.join(dirpath, filename)
-                        int_py = os.path.join(internal_dict_path, filename)
-                        try:
-                            # 如果内部不存在该文件，或者外部文件的修改时间更新，则强制覆盖
-                            mdx_path = os.path.splitext(ext_py)[0] + '.mdx'
-                            needs_copy = not os.path.exists(int_py) or os.path.getmtime(ext_py) > os.path.getmtime(int_py)
-                            if not needs_copy and os.path.isfile(mdx_path):
-                                with open(int_py, encoding='utf-8') as file:
-                                    match = re.search(r"^DICT_PATH\s*=\s*[ruRU]*['\"](.*?)['\"]", file.read(), re.M)
-                                needs_copy = bool(match and os.path.normcase(os.path.realpath(match.group(1))) !=
-                                                  os.path.normcase(os.path.realpath(mdx_path)))
-                            if needs_copy:
-                                if os.path.isfile(mdx_path):
-                                    from .custom_scripts import process_and_copy_custom_py
-                                    process_and_copy_custom_py(mdx_path, ext_py, internal_dict_path, enable=False)
-                                else:
-                                    shutil.copy2(ext_py, int_py)
-                                logger.info(f"同步外部脚本并覆盖内部同名文件: [{filename}]")
-                        except Exception as e:
-                            logger.error(f"同步外部脚本失败: [{filename}] | 错误: {str(e)}")
-
     def is_enabled(self, unique):
         return bool(self.settings.dicts.get(unique, {}).get('enabled', False))
 
     def get_service(self, unique):
+        unique = getattr(self, 'aliases', {}).get(unique, unique)
         if not self.is_enabled(unique):
             return None
         # webservice unique: class name
@@ -151,6 +127,9 @@ class ServiceManager(object):
         WebService, LocalService
         """
         service_path = u'dict'
+        from .dictionary_binding import Catalogue
+        if not hasattr(self, 'catalogue'):
+            self.catalogue = Catalogue(self.settings.dirs)
         web_services, local_custom_services = list(), list()
         loaded_scripts = set()
         supported_paths = set()
@@ -165,6 +144,21 @@ class ServiceManager(object):
             f.endswith('.py') and \
             not os.path.isdir(mypath+os.sep+f)
         ]
+        library = getattr(self.settings, 'script_library', None)
+        if library is None:
+            data = getattr(self.settings, 'data', {})
+            library = data.get('script_library', {}) if isinstance(data, dict) else {}
+        from .script_library import validate
+        validate(library)
+        files = sorted(set(files) | set(library))
+        from .script_library import script_directory
+        cache = script_directory()
+        cache.mkdir(parents=True, exist_ok=True)
+        files = sorted(set(files) | {path.name for path in cache.glob('*.py')})
+        from ..utils.config_storage import read_object
+        excluded = set(read_object(cache / '.sync-state.json').get('excluded', []))
+        files = [name for name in files if name not in excluded]
+        self.script_library = {}
         base_class = (
             WebService, 
             LocalService,
@@ -175,10 +169,38 @@ class ServiceManager(object):
         for f in files:
             self._check_cancelled()
             try:
-                module = importlib.import_module( 
-                    u'.%s.%s' % (service_path, os.path.splitext(f)[0]), 
-                    __package__
-                )
+                from .dictionary_binding import portable_source, source_binding, resolve_dictionary
+                cached = cache / f
+                if cached.is_file():
+                    source = portable_source(cached.read_text(encoding='utf-8'))
+                elif f in library:
+                    source = library[f]['source']
+                else:
+                    import tokenize
+                    original_path = os.path.join(mypath, f)
+                    if os.path.isfile(original_path):
+                        with tokenize.open(original_path) as stream:
+                            source = portable_source(stream.read())
+                    else:
+                        source = ''
+                binding = source_binding(source)
+                if binding and not binding.get('title'):
+                    from .dictionary_binding import descriptor
+                    candidates = getattr(self, 'catalogue', None)
+                    candidates = candidates.files.get(binding['file'].casefold(), []) if candidates else []
+                    if len(candidates) == 1 and descriptor(candidates[0])['title']:
+                        source = portable_source(source, candidates[0])
+                # Load profile-specific source without rewriting the shipped scripts.
+                name = __package__ + '.dict.' + os.path.splitext(f)[0]
+                module = types.ModuleType(name) if source else importlib.import_module('.dict.' + os.path.splitext(f)[0], __package__)
+                module.__package__ = __package__ + '.dict'
+                module.__file__ = str(cached)
+                sys.modules[name] = module
+                exec(compile(source, module.__file__, 'exec'), module.__dict__)
+                if not cached.exists() or cached.read_text(encoding='utf-8') != source:
+                    cached.write_text(source, encoding='utf-8')
+                self.script_library[f] = {'source': source}
+                binding = source_binding(source)
                 
                 has_valid_service = False
                 
@@ -194,9 +216,16 @@ class ServiceManager(object):
                     service = service_wrap(clazz, *args)
                     service.__title__ = getattr(clazz, '__register_label__', name)
                     service.__unique__ = name
-                    service.__path__ = os.path.join(mypath, f)
+                    service.__path__ = str(cached)
+                    service.__source__ = source
+                    if binding:
+                        service.__binding__ = binding
+                        clazz.__dict_binding__ = binding
+                        service.__dict_path__ = resolve_dictionary(binding['file'], binding['title'])
+                        if not os.path.isfile(service.__dict_path__):
+                            service.__binding_status__ = ('ambiguous' if len(self.catalogue.candidates(binding)) > 1 else 'missing')
                     declared_path = getattr(module, 'DICT_PATH', '')
-                    if isinstance(declared_path, str):
+                    if isinstance(declared_path, str) and not binding:
                         service.__dict_path__ = declared_path
                     
                     if issubclass(clazz, WebService):
@@ -212,10 +241,18 @@ class ServiceManager(object):
                             path = getattr(instance, 'dict_path', '')
                             if isinstance(path, str) and path:
                                 service.__dict_path__ = path
+                                if not binding and os.path.isfile(path):
+                                    from .dictionary_binding import descriptor
+                                    discovered = descriptor(path)
+                                    if discovered['title']:
+                                        source = portable_source(source, path)
+                                        cached.write_text(source, encoding='utf-8')
+                                        service.__binding__ = clazz.__dict_binding__ = discovered
+                                        service.__source__ = source
                             if instance.support and path and MdxService.check(path):
                                 if not getattr(clazz, '__keep_default_mdx__', False):
                                     supported_paths.add(os.path.normcase(os.path.realpath(path)))
-                                    custom_sources[os.path.normcase(os.path.realpath(path))] = name
+                                    custom_sources[os.path.normcase(os.path.realpath(path))] = service.__unique__
                                 service.__dict_path__ = path
                         except Exception:
                             logger.exception('Custom dictionary is unavailable; retaining default MDX fallback: %s', f)
@@ -244,6 +281,11 @@ class ServiceManager(object):
         available local dictionary services
         '''
         mdx_services = list()
+        from .dictionary_binding import Catalogue
+        if not hasattr(self, 'catalogue'):
+            self.catalogue = Catalogue(self.settings.dirs)
+        if not hasattr(self, 'aliases'):
+            self.aliases = {}
         star_dict_services = list()
         logger.info("扫描本地词典目录 (配置的文件夹)...")
         
@@ -258,6 +300,8 @@ class ServiceManager(object):
                         
                         # MDX
                         if MdxService.check(dict_path):
+                            from .dictionary_binding import descriptor, identity
+                            binding = descriptor(dict_path)
                             canonical_path = os.path.normcase(os.path.realpath(dict_path))
                             custom_unique = getattr(self, 'custom_sources', {}).get(canonical_path)
                             if (canonical_path in getattr(self, 'supported_custom_paths', set()) and
@@ -266,8 +310,28 @@ class ServiceManager(object):
 
                             service = service_wrap(MdxService, dict_path)
                             service.__dict_path__ = dict_path
+                            service.__binding__ = binding
                             service.__title__ = os.path.splitext(filename)[0]
-                            service.__unique__ = md5(str(dict_path).encode('utf-8')).hexdigest()
+                            legacy = md5(str(dict_path).encode('utf-8')).hexdigest()
+                            service.__unique__ = 'mdx_' + identity(binding)
+                            self.aliases[legacy] = service.__unique__
+                            for old, saved in getattr(self.settings, 'dictionary_bindings', {}).items():
+                                if saved == binding:
+                                    self.aliases[old] = service.__unique__
+                            if not binding['title']:
+                                # Invalid/untitled headers cannot be auto-matched across machines.
+                                service.__unique__ = legacy
+                                self.aliases[legacy] = legacy
+                            elif len(self.catalogue.candidates(binding)) > 1:
+                                service.__binding_status__ = 'ambiguous'
+                                from .dictionary_binding import resolve_dictionary
+                                missing = resolve_dictionary(binding['file'], binding['title'])
+                                unavailable = service_wrap(MdxService, missing)
+                                unavailable.__dict__.update(service.__dict__)
+                                unavailable.__dict_path__ = missing
+                                service = unavailable
+                            if any(item.__unique__ == service.__unique__ for item in mdx_services):
+                                continue
                             mdx_services.append(service)
                             logger.info(f"成功发现本地 MDX 词典: [{filename}]")
                             

@@ -254,7 +254,8 @@ class RefactorTests(unittest.TestCase):
             target = Path(temp) / 'dict'
             scripts.process_and_copy_custom_py('C:/dict/sample.mdx', str(script), str(target))
             copied = (target / 'sample.py').read_text(encoding='utf-8')
-            self.assertIn("DICT_PATH = r'C:/dict/sample.mdx'", copied)
+            self.assertIn("DICT_FILE = 'sample'", copied)
+            self.assertNotIn("C:/dict", copied)
             self.assertIn('from ..base import MdxService', copied)
             self.assertIn("u'MDX-sample'", copied)
             self.assertTrue(self.config.dicts['Sample']['enabled'])
@@ -265,8 +266,7 @@ class RefactorTests(unittest.TestCase):
         self.assertIs(options.CTabBar, self.load('gui.options_widgets').CTabBar)
         self.load('gui.dictmanager')
         folders = self.load('gui.foldermanager')
-        self.assertIs(folders.process_and_copy_custom_py,
-                      self.load('service.custom_scripts').process_and_copy_custom_py)
+        self.assertFalse(hasattr(folders, 'process_and_copy_custom_py'))
         tab = options.TabContent.__new__(options.TabContent)
         tab._was_built = False
         tab._conf = [{'fld_name': 'Meaning'}]

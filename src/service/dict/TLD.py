@@ -4,7 +4,10 @@ import re
 import random
 from ..base import *
 
-DICT_PATH = r'C:/Users/jiang/Desktop/dict/The little dict（无发音）/TLD.mdx'
+from ..dictionary_binding import resolve_dictionary
+DICT_FILE = 'TLD'
+DICT_TITLE = ''
+DICT_PATH = resolve_dictionary(DICT_FILE, DICT_TITLE)
 # u'E:\\BaiduYunDownload\\mdx\\L6mp3.mdx'
 # r开头，windows下直接复制路径粘贴到引号内即可。
 

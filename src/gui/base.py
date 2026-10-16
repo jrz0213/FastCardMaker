@@ -21,6 +21,7 @@ from anki.utils import is_mac
 from aqt.qt import *
 
 from ..context import APP_ICON
+from copy import deepcopy
 
 __all__ = ['Dialog', 'WIDGET_SIZE']
 
@@ -49,6 +50,47 @@ class Dialog(QDialog):
         # mac compatible
         if is_mac:
             QApplication.setStyle('Fusion')
+
+    def watch_changes(self, reader):
+        self._snapshot_reader = reader
+        self._initial_values = deepcopy(reader())
+
+    def widget_values(self):
+        values = []
+        for widget in self.findChildren(QWidget):
+            if isinstance(widget, QComboBox):
+                values.append(widget.currentText() if widget.isEditable() else widget.currentData())
+            elif isinstance(widget, QLineEdit):
+                # Spin boxes and editable combos already contribute their value.
+                if not isinstance(widget.parentWidget(), (QAbstractSpinBox, QComboBox)):
+                    values.append(widget.text())
+            elif isinstance(widget, QPlainTextEdit):
+                values.append(widget.toPlainText())
+            elif isinstance(widget, QCheckBox):
+                values.append(widget.isChecked())
+            elif isinstance(widget, QSpinBox):
+                values.append(widget.value())
+            elif isinstance(widget, QListWidget):
+                values.append([(widget.item(i).text(), widget.item(i).checkState().value) for i in range(widget.count())])
+        return values
+
+    def reject(self):
+        reader = getattr(self, '_snapshot_reader', None)
+        if reader and reader() != self._initial_values:
+            from ..translations import text as tr
+            answer = QMessageBox(self)
+            answer.setWindowTitle(tr('确认退出'))
+            answer.setText(tr('设置已修改，是否保存？'))
+            save = answer.addButton(tr('保存'), QMessageBox.ButtonRole.AcceptRole)
+            discard = answer.addButton(tr('不保存'), QMessageBox.ButtonRole.DestructiveRole)
+            answer.addButton(QMessageBox.StandardButton.Cancel)
+            answer.exec()
+            if answer.clickedButton() is save:
+                self.accept()
+                return
+            if answer.clickedButton() is not discard:
+                return
+        super().reject()
 
 
 class WidgetSize(object):

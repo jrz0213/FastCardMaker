@@ -87,7 +87,7 @@ class Config(object):
         self._local_shared_hash = fingerprint(updated)
         if publish:
             try:
-                latest = read_object(self.path)
+                latest = self._read_shared()
                 if fingerprint(latest) == expected_hash:
                     if latest != portable(updated):
                         atomic_write(self.path, portable(updated))
@@ -107,7 +107,16 @@ class Config(object):
                                        'shared_hash': shared_hash})
 
     def shared_settings(self):
-        return portable(validate_settings(read_object(self.path)))
+        return portable(validate_settings(self._read_shared()))
+
+    def _read_shared(self):
+        if os.path.exists(self.path):
+            return read_object(self.path)
+        for name in ('_fastcmcfg.json', '.fastcmcfg.json', '_fastwqcfg.json', '.fastwqcfg.json'):
+            path = os.path.join(self.media_dir, name)
+            if os.path.exists(path):
+                return read_object(path)
+        return {}
 
     def settings_difference(self):
         remote, local = self.shared_settings(), portable(self.data)
@@ -155,7 +164,8 @@ class Config(object):
         if not force and not changed and self.data is not None:
             return self.data
         self.path = os.path.join(self.media_dir, '_' + self._CONFIG_FILENAME)
-        candidates = [self.path, os.path.join(self.media_dir, '.' + self._CONFIG_FILENAME),
+        candidates = [self.path, os.path.join(self.media_dir, '_fastcmcfg.json'),
+                      os.path.join(self.media_dir, '.fastcmcfg.json'),
                       os.path.join(self.media_dir, '_fastwqcfg.json'),
                       os.path.join(self.media_dir, '.fastwqcfg.json')]
         path = next((candidate for candidate in candidates if os.path.exists(candidate)), self.path)
@@ -164,8 +174,7 @@ class Config(object):
             if local:
                 loaded = {}  # A bad remote file must not prevent local startup.
             else:
-                with open(path, encoding='utf-8') as file:
-                    loaded = json.load(file)
+                loaded = read_object(path)
             if not isinstance(loaded, dict):
                 raise ValueError('Invalid FastCard Maker configuration')
         except FileNotFoundError:
@@ -177,7 +186,7 @@ class Config(object):
             self._shared_hash = local.get('shared_hash')
         else:
             self.data = loaded
-            self._shared_hash = fingerprint(read_object(self.path))
+            self._shared_hash = fingerprint(self._read_shared())
         # Existing AI profiles are copied into portable settings in memory only.
         # Credentials continue to be read from the original local file until saved.
         if not local and 'ai_settings' not in self.data:

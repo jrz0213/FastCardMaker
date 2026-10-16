@@ -42,6 +42,11 @@ def read_settings():
         shared = getattr(config, 'ai_settings', None)
         if isinstance(shared, dict):
             keys = deepcopy(data.get('keys', {}))
+            backup = getattr(config, 'data', {}).get('credential_backup', {})
+            if isinstance(backup, dict) and getattr(config, 'data', {}).get('backup_api_keys', True):
+                for identifier, key in backup.items():
+                    if isinstance(identifier, str) and isinstance(key, str):
+                        keys.setdefault(identifier, key)
             previous = {item['id']: item for item in data.get('profiles', []) if isinstance(item, dict) and 'id' in item}
             for item in shared.get('profiles', []):
                 old = previous.get(item.get('id'), {})
@@ -61,7 +66,7 @@ def read_settings():
         raise ValueError(tr('无法读取 AI 配置文件，请检查文件权限或格式。')) from None
 
 
-def write_settings(data):
+def write_settings(data, backup_api_keys=None):
     path = settings_path()
     temporary = None
     try:
@@ -75,7 +80,10 @@ def write_settings(data):
             os.fsync(file.fileno())
         os.replace(temporary, path)
         from ...utils.config_storage import portable
-        config.update({'ai_settings': portable(data)})
+        enabled = getattr(config, 'data', {}).get('backup_api_keys', True) if backup_api_keys is None else backup_api_keys
+        config.update({'ai_settings': portable(data), 'backup_api_keys': bool(enabled),
+                       'credential_backup': deepcopy(data.get('keys', {})) if
+                       enabled else {}})
     except OSError:
         raise ValueError(tr('无法保存 AI 配置，请检查当前 Anki 用户文件夹的写入权限。')) from None
     finally:

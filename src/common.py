@@ -213,6 +213,7 @@ def config_menu():
     menu.addAction(tr('全类型查询'), lambda: show_type_query())
     menu.addAction(_('OPTIONS'), lambda: show_options())
     class MainProgressAction(TaskMenuAction):
+        @pyqtSlot()
         def refresh(self):
             super().refresh()
             self.setEnabled(True)

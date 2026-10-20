@@ -19,6 +19,34 @@ import test_modularization as support
 
 @unittest.skipUnless(importlib.util.find_spec('PyQt6'), 'PyQt6 is not installed')
 class GuiRuntimeTests(unittest.TestCase):
+    def test_deleted_task_menu_actions_disconnect_from_hub_and_job(self):
+        from PyQt6 import sip
+        module = self.load('gui.task_progress')
+        hub = module.progress_hub()
+        class Report(self.qt.QObject):
+            changed = self.qt.pyqtSignal()
+        report = Report()
+        report.token = self.load('utils.media').profile_token()
+        report.cancelled, report.done = False, False
+        report.completed, report.total = 2, 5
+        baseline = [hub.receivers(signal) for signal in (hub.started, hub.completed, hub.reset)]
+        wrappers = []
+        for _ in range(20):
+            parent = self.qt.QMenu()
+            action = module.TaskMenuAction(parent)
+            action.bind(report)
+            self.assertIn('2 / 5', action.text())
+            wrappers.append(action)  # Keep Python wrappers alive after C++ deletion.
+            sip.delete(parent)
+        self.assertTrue(all(sip.isdeleted(action) for action in wrappers))
+        self.assertEqual([hub.receivers(signal) for signal in (hub.started, hub.completed, hub.reset)], baseline)
+        self.assertEqual(report.receivers(report.changed), 0)
+        hub.started.emit(report)
+        hub.completed.emit(report)
+        report.changed.emit()
+        hub.reset.emit()
+        self.assertFalse(self.errors, self.errors)
+
     def test_script_compare_defaults_to_backup_and_headers_choose_exclusively(self):
         module = self.load('gui.script_compare')
         dialog = module.ScriptCompareDialog(None, {'a.py': {'source': 'x=1'}},

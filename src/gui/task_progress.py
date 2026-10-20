@@ -215,13 +215,27 @@ class TaskMenuAction(QAction):
     def __init__(self, parent):
         super().__init__(parent)
         self.job = None
-        hub = progress_hub()
+        hub = self._hub = progress_hub()
         hub.started.connect(self.bind)
         hub.completed.connect(self.bind)
-        hub.reset.connect(lambda: self.bind(None))
+        hub.reset.connect(self.reset_progress)
         self.triggered.connect(self.open_progress)
         self.bind(hub.current or hub.last)
 
+    @pyqtSlot()
+    def reset_progress(self):
+        try:
+            self.bind(None)
+        except RuntimeError:
+            # Defensive cleanup for a late call from an older Python wrapper.
+            for signal, slot in ((self._hub.started, self.bind), (self._hub.completed, self.bind),
+                                 (self._hub.reset, self.reset_progress)):
+                try:
+                    signal.disconnect(slot)
+                except (RuntimeError, TypeError):
+                    pass
+
+    @pyqtSlot(object)
     def bind(self, job):
         if self.job is not None:
             try:
@@ -233,6 +247,7 @@ class TaskMenuAction(QAction):
             job.changed.connect(self.refresh)
         self.refresh()
 
+    @pyqtSlot()
     def refresh(self):
         from ..utils.media import profile_token
         job = self.job

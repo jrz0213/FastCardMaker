@@ -255,7 +255,7 @@
   "ABOUT": "About",
   "关于": "About",
   "REPOSITORY": "Project Repo",
-  "项目地址": "Project Repo",
+  "项目地址": "GitHub repository",
   "FEEDBACK": "Feedback",
   "反馈": "Feedback",
   "VERSION": "Current Version",
@@ -703,5 +703,9 @@
   "已选择 %s 个笔记类型": "%s note types selected",
   "存在多个匹配的词典文件，请调整导入目录": "Multiple matching dictionaries; adjust imported folders",
   "覆盖：本机 → 媒体文件夹；同步：媒体文件夹 → 本机；取消：保持不变。词典路径仅存本机；API Key 是否同步取决于备份开关。": "Overwrite: local → media; Sync: media → local; Cancel: keep both. Dictionary paths stay local; API key synchronization follows the backup switch.",
-  "API Key 在本机明文保存；默认也包含在配置备份中，可在插件设置关闭。\n": "API keys are stored locally as plaintext and included in settings backup by default. Disable this in Plugin settings.\n"
+  "API Key 在本机明文保存；默认也包含在配置备份中，可在插件设置关闭。\n": "API keys are stored locally as plaintext and included in settings backup by default. Disable this in Plugin settings.\n",
+  "使用 AI、本地 MDX 词典和网络词典填充 Anki 笔记，制作词汇、概念及其他学习主题的闪卡。": "Fill Anki notes with AI, local MDX dictionaries and online dictionaries to create flashcards for vocabulary, concepts and other study topics.",
+  "支持自定义字段提示词、批量后台处理和 AI 辅助生成词典解析脚本。": "Supports custom field prompts, background batch processing and AI-assisted dictionary parser generation.",
+  "基于 FastWordQuery（FastWQ）开发，感谢原作者及贡献者。": "Based on FastWordQuery (FastWQ). Thanks to its original authors and contributors.",
+  "问题反馈": "Report an issue"
 }

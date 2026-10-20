@@ -19,6 +19,29 @@ import test_modularization as support
 
 @unittest.skipUnless(importlib.util.find_spec('PyQt6'), 'PyQt6 is not installed')
 class GuiRuntimeTests(unittest.TestCase):
+    def test_about_content_is_localized_and_uses_current_project_links(self):
+        sys.modules.pop(support.PACKAGE + '.constants', None)
+        constants = self.load('constants')
+        i18n = self.load('i18n')
+        with i18n.use_language('en'):
+            english = constants.Template.about_html()
+        with i18n.use_language('zh-CN'):
+            chinese = constants.Template.about_html()
+        self.assertIn('MDX', english)
+        self.assertIn('使用 AI', chinese)
+        for text in (english, chinese):
+            self.assertIn('FastWordQuery', text)
+            self.assertIn('GPL-3.0-or-later', text)
+            self.assertIn(constants.Endpoint.repository, text)
+            self.assertIn(constants.Endpoint.feedback_issue, text)
+            self.assertIn('mailto:jiangrz0213@gmail.com', text)
+            self.assertNotIn('hi.fanjialiang@gmail.com', text)
+        module = self.load('gui.common')
+        with patch.object(module, 'Template', constants.Template), patch.object(module.QMessageBox, 'about') as show:
+            module.show_about_dialog(None)
+        self.assertIsNone(show.call_args.args[0])
+        self.assertIn('FastCard Maker', show.call_args.args[2])
+
     def test_deleted_task_menu_actions_disconnect_from_hub_and_job(self):
         from PyQt6 import sip
         module = self.load('gui.task_progress')
@@ -1802,6 +1825,9 @@ class GuiRuntimeTests(unittest.TestCase):
             self.assertEqual([a.text() for a in menu.actions()], ['全类型查询', 'OPTIONS', '后台任务：暂无任务', 'ABOUT'])
             menu.actions()[0].trigger()
             show.assert_called_once_with()
+            menu.actions()[-1].trigger()
+            gui.show_about_dialog.assert_called_once_with(root)
+            gui.show_about_dialog.reset_mock()
             show.reset_mock()
             browser = self.qt.QMainWindow()
             self.widgets.append(browser)
@@ -1815,6 +1841,8 @@ class GuiRuntimeTests(unittest.TestCase):
             self.assertEqual([a.text() for a in browser_menu.actions()][:2], ['QUERY_SELECTED', '全类型查询'])
             browser_menu.actions()[1].trigger()
             show.assert_called_once_with(browser)
+            next(action for action in browser_menu.actions() if action.text() == 'ABOUT').trigger()
+            gui.show_about_dialog.assert_called_once_with(browser)
 
     def test_rebranded_cache_can_recover_new_and_legacy_databases_together(self):
         module, _, _, note, _ = self.background_host()

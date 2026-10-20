@@ -101,4 +101,4 @@ def show_options(browser=None, model_id=-1, callback=None, *args, **kwargs):
 
 def show_about_dialog(parent):
     '''open about dialog'''
-    QMessageBox.about(parent, _('ABOUT'), Template.tmpl_about)
+    QMessageBox.about(parent, _('ABOUT'), Template.about_html())

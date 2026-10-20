@@ -225,7 +225,7 @@ def config_menu():
                 super().open_progress()
     progress = MainProgressAction(menu)
     menu.addAction(progress)
-    menu.addAction(_('ABOUT'), lambda: show_about_dialog())
+    menu.addAction(_('ABOUT'), lambda: show_about_dialog(mw))
 
 
 def context_menu():

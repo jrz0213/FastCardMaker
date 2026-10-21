@@ -5,6 +5,7 @@ from aqt.qt import *
 from ..context import config
 from ..translations import text as tr
 from ..utils.media import profile_token
+from .help_widgets import with_help
 
 
 def selected_model_ids(browser):
@@ -39,7 +40,10 @@ class TypeQueryDialog(QDialog):
         layout = QVBoxLayout(self)
         note = QLabel(tr('选择笔记类型及配置，查询这些类型的全部笔记。'))
         note.setWordWrap(True)
-        layout.addWidget(note)
+        layout.addWidget(with_help(note, tr('查询范围'), tr(
+            '查询会处理勾选笔记类型的全部笔记，不限于当前牌组或浏览器选中项，使用右侧选择的已保存配置。'
+            '从浏览器打开时默认勾选选中笔记所属类型；从首页打开时默认不选。未勾选类型不会运行。'
+            '只想处理选中笔记，请使用“查询选中项”。')))
         self.types = QTreeWidget()
         self.types.setHeaderLabels([tr('选择笔记类型'), tr('使用的配置')])
         self.types.setStyleSheet('QTreeWidget::item { padding: 7px 4px; } QHeaderView::section { padding: 8px; font-weight: bold; }')

@@ -19,6 +19,51 @@ import test_modularization as support
 
 @unittest.skipUnless(importlib.util.find_spec('PyQt6'), 'PyQt6 is not installed')
 class GuiRuntimeTests(unittest.TestCase):
+    def test_scheduled_type_select_all_reflects_individual_choices(self):
+        self.background_host()
+        sys.modules.pop(support.PACKAGE + '.gui.setting', None)
+        self.host.mw.col.models.all.return_value = [self.model, dict(self.model, id=2, name='Second type')]
+        dialog = self.load('gui.setting').SettingDialog(None)
+        self.widgets.append(dialog)
+        dialog.auto_enabled.setChecked(True)
+        dialog.auto_models.item(0).setCheckState(self.qt.Qt.CheckState.Checked)
+        self.assertEqual(dialog.auto_select_all.checkState(), self.qt.Qt.CheckState.PartiallyChecked)
+        dialog.auto_select_all.click()
+        self.assertTrue(all(dialog.auto_models.item(i).checkState() == self.qt.Qt.CheckState.Checked for i in range(2)))
+        self.assertEqual(dialog.auto_select_all.checkState(), self.qt.Qt.CheckState.Checked)
+        dialog.auto_select_all.click()
+        self.assertTrue(all(dialog.auto_models.item(i).checkState() == self.qt.Qt.CheckState.Unchecked for i in range(2)))
+
+    def test_zip_export_uses_only_saved_values_without_saving_or_closing_settings(self):
+        self.background_host()
+        sys.modules.pop(support.PACKAGE + '.gui.setting', None)
+        dialog = self.load('gui.setting').SettingDialog(None)
+        self.widgets.append(dialog)
+        backup = self.load('gui.backup_controls')
+        store = self.load('service.ai_support.store')
+        self.host.config.media_dir = str(Path(self.host.mw.pm.profileFolder()) / 'collection.media')
+        self.host.config.data = {'backup_api_keys': False, 'auto_run': {'interval_minutes': 5}}
+        dialog.ai_retries.setValue(4)
+        dialog.ai_timeout.setValue(123)
+        dialog.auto_interval.setValue(17)
+        initial = deepcopy(dialog._initial_values)
+        destination = str(Path(self.host.mw.pm.profileFolder()) / 'settings.zip')
+        with patch.object(backup.QFileDialog, 'getSaveFileName', return_value=(destination, '')), \
+                patch.object(store, 'read_settings', return_value={'profiles': [], 'keys': {'demo': 'test-key'},
+                    'transport': {'timeout': 90, 'connect_timeout': 10, 'retries': 2}}), \
+                patch.object(self.load('utils.backup_store'), 'write_bundle') as write, \
+                patch.object(dialog, 'save') as save, \
+                patch.object(backup.QMessageBox, 'information'):
+            backup.export_backup(dialog)
+        save.assert_not_called()
+        exported = write.call_args.kwargs['settings']
+        self.assertEqual(exported['auto_run']['interval_minutes'], 5)
+        self.assertEqual(exported['ai_settings']['transport']['retries'], 2)
+        self.assertEqual(exported['ai_settings']['transport']['timeout'], 90)
+        self.assertNotIn('credential_backup', exported)
+        self.assertEqual(dialog._initial_values, initial)
+        self.assertNotEqual(dialog.widget_values(), initial)
+
     def test_ai_prompt_is_independent_of_connection_and_dictionary_selection(self):
         self.services['ai'] = [{'title': 'First', 'unique': 'ai:first'}, {'title': 'Second', 'unique': 'ai:second'}]
         dialog = self.dialog()

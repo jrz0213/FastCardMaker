@@ -15,6 +15,28 @@ def mdx(path, title):
 
 
 class PortableScriptTests(unittest.TestCase):
+    def test_recycled_scripts_and_conversations_are_never_backed_up(self):
+        current = self.scripts / 'current.py'
+        current.write_text('version = 1', encoding='utf-8')
+        updates = self.host.load('service.script_updates')
+        updates.recycle_script(current, self.scripts)
+        current.write_text('version = 2', encoding='utf-8')
+        history = self.scripts / '.fwq-history'
+        history.mkdir()
+        (history / 'old.py').write_text('old = True', encoding='utf-8')
+        (history / 'conversation.json').write_text('{}', encoding='utf-8')
+        (self.scripts / 'old.py.bak').write_text('old = True', encoding='utf-8')
+        files = self.library.snapshot(self.scripts)
+        self.assertEqual(files, {'current.py': {'source': 'version = 2'}})
+        self.backup.initialize()
+        with zipfile.ZipFile(self.backup.backup_path()) as archive:
+            self.assertEqual(set(archive.namelist()), {'settings.json', 'manifest.json', 'scripts/current.py'})
+            self.assertNotIn(b'version = 1', archive.read('scripts/current.py'))
+        manual = self.root / 'manual.zip'
+        self.host.load('utils.backup_store').write_bundle(manual, scripts=files)
+        with zipfile.ZipFile(manual) as archive:
+            self.assertEqual(set(archive.namelist()), {'settings.json', 'manifest.json', 'scripts/current.py'})
+
     def test_bundled_mdx_parsers_have_filename_bindings_without_local_paths(self):
         for name in ('LDOCE5.py', 'LDOCE6.py', 'TLD.py', 'oaldpe.py', '百词斩图解词典.py'):
             source = (support.SRC / 'service' / 'dict' / name).read_text(encoding='utf-8')

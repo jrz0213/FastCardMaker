@@ -2,6 +2,7 @@
 from aqt.qt import *
 from .base import Dialog
 from ..translations import text as tr
+from .help_widgets import with_help
 from ..service import script_backup as storage
 
 
@@ -12,7 +13,11 @@ class ScriptCompareDialog(Dialog):
         self.initial = storage.digest(local), storage.digest(backup)
         self.resize(800, 480)
         layout = QVBoxLayout(self)
-        layout.addWidget(QLabel(tr('每个文件选择保留的一侧；选择“不存在”将删除该文件。')))
+        layout.addWidget(with_help(QLabel(tr('选择保留的脚本')), tr('版本选择说明'), tr(
+            '本机版本是当前运行副本；备份版本是媒体库 ZIP 中的当前脚本，不是回收站里的旧版本。'
+            '默认选备份，每行只能保留一侧，表头勾选可全选一侧。\n\n'
+            '打开只读查看，不运行代码。选择“不存在”的一侧表示删除该文件，确认前会再次提示。'
+            '未确认或取消时不会应用选择。确认前会再次检测文件是否变化，防止覆盖期间的新修改。')))
         self.table = QTableWidget(0, 3)
         self.table.setHorizontalHeaderLabels([tr('文件'), tr('本机版本'), tr('备份版本')])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)

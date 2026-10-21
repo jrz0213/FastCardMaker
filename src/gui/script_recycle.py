@@ -5,6 +5,7 @@ import tokenize
 from pathlib import Path
 from aqt.qt import *
 from .base import Dialog
+from .help_widgets import with_help
 from ..translations import text as tr
 from ..service.script_updates import trash_directory, prune_old_scripts
 
@@ -15,6 +16,11 @@ class ScriptRecycleDialog(Dialog):
         self.directory, self.selected_path = directory, None
         self.resize(680, 400)
         layout = QVBoxLayout(self)
+        layout.addWidget(with_help(QLabel(tr('旧版本（仅本机）')), tr('旧版本说明'), tr(
+            '这里只列出本机被删除或替换的旧脚本，不进入自动备份或手动导出 ZIP，也不会同步到其他设备。'
+            '文件名后显示进入回收站的时间，超过七天会清理。\n\n'
+            '打开：只读查看源码，不执行。恢复：替换对应的当前脚本，替换前会保留当前版本。'
+            '恢复完成后，该文件作为当前脚本按备份设置处理。右上角 × 关闭列表，不恢复任何文件。')))
         self.files = QListWidget()
         layout.addWidget(self.files)
         prune_old_scripts(directory)
@@ -40,6 +46,8 @@ class ScriptRecycleDialog(Dialog):
         self.files.currentRowChanged.connect(self.refresh)
         if self.files.count():
             self.files.setCurrentRow(0)
+        else:
+            layout.insertWidget(1, QLabel(tr('暂无可恢复的旧脚本。')))
         self.refresh()
 
     def refresh(self, *_):

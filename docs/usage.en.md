@@ -51,6 +51,8 @@ Temperature 1 and thinking disabled are editable examples, without automatic mod
 
 Shared request rate, request/connection timeouts and retries are in **Plugin settings → AI settings**.
 
+Click **?** beside a setting group for explanations of sending modes, request settings, CSS and backups.
+
 ### 2. Select target fields and write prompts
 
 Select the note type in Options, then configure its fields:
@@ -108,7 +110,7 @@ Open **Plugin settings → AI settings**:
 - **Markdown:** formats tables, lists and other Markdown in replies; enabled by default.
 - **CSS injection:** enable it for table styles and select affected types in the always-visible list. Only the stylesheet editor is folded; click **View / edit shared CSS** to expand it. Injection is off by default and applies after content is actually updated for a selected type.
 
-Use **Dictionary settings** for dictionary workers and matching; use **General settings** for language, cloze format and scheduled generation.
+Use **Dictionary settings** for dictionary workers, matching and cloze format; use **General settings** for language, scheduled generation and backup mode.
 
 ![Sending mode and formatting settings](images/user-guide/en-settings.png)
 
@@ -128,15 +130,15 @@ When notes are ready, a top prompt counts down **10 seconds**. Click **Run now**
 
 ### 6. Synchronize or read configuration
 
-Opening **FastCM → Options** compares local settings with the copy in the media folder. A prompt appears only when they differ; expand its details to see the changed settings:
+In automatic backup mode, opening **FastCM → Options** compares local settings with the copy in the media folder. A prompt appears only when they differ; expand its details to see the changed settings:
 
 - **Overwrite:** replace the media-folder copy with this device’s settings.
 - **Sync:** read the media-folder copy into this device.
 - **Cancel:** keep both copies and continue using local settings. Subsequent edits stay local until the difference is resolved.
 
-Field mappings, AI connections, parameters and CSS are stored in `_fastcmcfg.json` in the media folder. The working local copy is `_fastcm_local.json` in the current profile. Dictionary folders and machine-specific paths remain local. API keys are stored locally in `fastcm/ai/config.json`; the General settings switch controls whether they are also included in shared configuration, enabled by default.
+Basic preferences are stored in `_fastcmcfg.json` in the media folder; AI connections, field mappings and current Python scripts share `_fastcm_backup.zip`. The working local copy is `_fastcm_local.json` in the current profile. Dictionary folders and machine-specific paths remain local. API keys are stored locally in `fastcm/ai/config.json`; the General settings switch controls whether they also enter backups, enabled by default.
 
-To import an existing JSON configuration, open **Plugin settings → General settings → Read configuration**. The file picker starts in the media folder, allows other locations, and filters for JSON files. Confirming loads settings locally and refreshes field configuration, while keeping local dictionary paths and keys. On the next Options opening, choose whether to overwrite the media-folder copy. There is no manual backup button.
+For manual transfers choose **Manual backup** under **Plugin settings → General settings → Configuration backup**, then use **Import ZIP / Export ZIP**, defaulting to the media folder. Export includes saved settings only. After edits, click **OK** to save, then reopen settings to export. Import discards unsaved page changes and closes the page, as stated in its confirmation; local dictionary paths are retained.
 
 Set dictionary folders separately on each computer. Missing dictionaries are never silently replaced with another source.
 
@@ -198,7 +200,7 @@ History and source attachments increase token usage and may exceed the model lim
 
 Choose **Automatic backup** or **Manual backup** under **Plugin settings → General settings → Configuration backup**. Automatic mode saves AI connections, field mappings and Python dictionary parsers together in `_fastcm_backup.zip`, which syncs with Anki media. Legacy script backups remain readable. Manual mode keeps edits local; use **Import ZIP / Export ZIP** explicitly, with the media folder as the default location.
 
-Runtime Python copies live in `fastcm/scripts` within the current Anki profile. Dictionary JavaScript stays with the dictionary; select Send JS when AI analysis needs it. Folder scans no longer import adjacent Python files. Use **Dictionary manager → Import script** instead.
+Runtime Python copies live in `fastcm/scripts` within the current Anki profile. **Recycled old scripts stay on this device and are excluded from both automatic backups and manual ZIP exports.** After restoration they participate as current scripts. Dictionary JavaScript stays with the dictionary; select Send JS when AI analysis needs it. Folder scans no longer import adjacent Python files. Use **Dictionary manager → Import script** instead.
 
 Opening Options checks script content fingerprints. If versions differ, entering dictionary or AI settings shows a file chooser with **Local version / Backup version**, defaulting to Backup. Header checkboxes select an entire side; individual rows can then be changed. Each side shows its size and **Open**, which displays read-only source inside the add-on without executing it. Selecting a missing side deletes the file, with confirmation. If no ZIP exists, current scripts create the first backup. Matching copies update automatically when a script is saved; differing copies require a choice.
 

@@ -4,6 +4,7 @@ from pathlib import Path
 from aqt.qt import *
 from ..context import config
 from ..translations import text as tr
+from .help_widgets import with_help
 
 
 def build_controls(dialog, layout):
@@ -24,18 +25,22 @@ def build_controls(dialog, layout):
         dialog.backup_modes[code] = action
         action.triggered.connect(lambda checked, value=code: choose_mode(dialog, value))
     dialog.backup_mode.setMenu(menu)
-    box.addWidget(dialog.backup_mode)
+    box.addWidget(with_help(dialog.backup_mode, tr('配置保存'), tr(
+        '自动备份：保存修改后，将 AI 连接、字段配置和当前 Python 脚本更新到媒体库 ZIP，随 Anki 媒体同步。'
+        '手动备份：只保存到本机，使用导入／导出 ZIP 自行传递。\n\n'
+        '词典路径、MDX／MDD 文件、词典附带 JS、对话记录和回收站中的旧脚本不进入备份。'
+        '旧脚本仅在本机保留七天，恢复为当前脚本后才参与备份。\n\n'
+        'API Key 默认包含在备份中，且为明文；取消下方勾选可排除，本机密钥仍保留。'
+        '导入缺少密钥的备份不会清空已有密钥。导出只包含已保存的配置，当前页面的修改需要先点击确定保存。')))
     dialog.backup_api_keys = QCheckBox(tr('备份中包含 API Key（明文）'))
     dialog.backup_api_keys.setChecked(getattr(config, 'data', {}).get('backup_api_keys', True))
     box.addWidget(dialog.backup_api_keys)
-    tip = QLabel(tr('AI 连接、字段配置和词典脚本一起备份；词典路径仅保存在本机。'))
-    tip.setWordWrap(True)
-    box.addWidget(tip)
     dialog.backup_manual = QWidget()
     buttons = QHBoxLayout(dialog.backup_manual)
     buttons.setContentsMargins(0, 0, 0, 0)
     dialog.import_backup_button = QPushButton(tr('导入 ZIP'))
     dialog.export_backup_button = QPushButton(tr('导出 ZIP'))
+    dialog.export_backup_button.setToolTip(tr('导出已保存的配置；当前页面未保存的修改不会包含在内。'))
     dialog.import_backup_button.clicked.connect(lambda: import_backup(dialog))
     dialog.export_backup_button.clicked.connect(lambda: export_backup(dialog))
     buttons.addWidget(dialog.import_backup_button)
@@ -49,7 +54,7 @@ def choose_mode(dialog, mode):
     mode = mode if mode in ('auto', 'manual') else 'auto'
     dialog._backup_mode = mode
     dialog.backup_modes[mode].setChecked(True)
-    dialog.backup_mode.setText(tr('配置保存') + '：' + tr('手动备份' if mode == 'manual' else '自动备份'))
+    dialog.backup_mode.setText(tr('手动备份' if mode == 'manual' else '自动备份'))
     dialog.backup_manual.setVisible(mode == 'manual')
 
 
@@ -65,10 +70,11 @@ def export_backup(dialog):
     try:
         if Path(path).suffix.lower() != '.zip':
             path += '.zip'
-        data = dict(config.data, backup_mode=dialog._backup_mode, backup_api_keys=dialog.backup_api_keys.isChecked())
+        data = dict(config.data)
+        include_keys = data.get('backup_api_keys', True)
         ai = read_settings()
         data['ai_settings'] = portable(ai)
-        data['credential_backup'] = ai.get('keys', {}) if dialog.backup_api_keys.isChecked() else {}
+        data['credential_backup'] = ai.get('keys', {}) if include_keys else {}
         write_bundle(path, settings=portable(data), scripts=snapshot(script_directory()))
         QMessageBox.information(dialog, tr('导出 ZIP'), tr('备份已导出。'))
     except (OSError, ValueError, SyntaxError) as error:
@@ -88,7 +94,7 @@ def import_backup(dialog):
         bundle = read_bundle(path)
         if bundle is None:
             raise ValueError('Backup not found')
-        if QMessageBox.question(dialog, tr('导入 ZIP'), tr('用备份中的配置和脚本更新本机？缺失的 API Key 不会清空本机密钥。'),
+        if QMessageBox.question(dialog, tr('导入 ZIP'), tr('用备份中的配置和脚本更新本机？当前页面未保存的修改将放弃，导入后关闭此页。缺失的 API Key 不会清空本机密钥。'),
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return

@@ -11,6 +11,7 @@ from ..translations import text as tr
 from ..i18n import languages
 from ..utils.ai_format import DEFAULT_CSS, global_css, rules
 from .base import Dialog
+from .help_widgets import with_help
 from ..service.ai_config import ai_send_rate, transport_settings, save_transport
 
 
@@ -33,7 +34,9 @@ class SettingDialog(Dialog):
         self.ai_send_mode.addItem(tr('每张卡片一次发送（默认）'), 'note')
         self.ai_send_mode.addItem(tr('每个字段分别发送'), 'field')
         self.ai_send_mode.setCurrentIndex(max(0, self.ai_send_mode.findData(getattr(config, 'ai_send_mode', 'note'))))
-        form.addRow(tr('AI 发送方式'), self.ai_send_mode)
+        form.addRow(tr('AI 发送方式'), with_help(self.ai_send_mode, tr('AI 发送方式'), tr(
+            '按笔记发送：同一笔记使用同一 AI 连接的字段合并请求，减少重复输入。逐字段发送：每个目标字段单独请求。'
+            '字段提示词支持多个 {{字段名}}；切换 AI 连接不会改写提示词。')))
         general_layout.addLayout(form)
         transport = transport_settings()
         for attr, label, low, high, value in (
@@ -49,16 +52,21 @@ class SettingDialog(Dialog):
             elif attr == 'ai_rate':
                 control.setSuffix(tr(' 次/分钟'))
             setattr(self, attr, control)
+            if attr == 'ai_retries':
+                control = with_help(control, tr('请求参数'), tr(
+                    '每分钟发送数：所有 AI 连接共用，按间隔平滑发送，未发送的请求排队等待。\n\n'
+                    '连接超时：建立网络连接最多等待多久。请求超时：等待服务响应的超时设置。\n\n'
+                    '自动重试：限流和临时服务错误时额外尝试的次数，0 表示不重试；密钥或参数错误不重试，网络超时不会盲目重发。'))
             form.addRow(label, control)
         self.ai_markdown = QCheckBox(tr('解析 Markdown（标题、表格、列表等）'))
         self.ai_markdown.setChecked(bool(getattr(config, 'ai_markdown', True)))
         general_layout.addWidget(self.ai_markdown)
         self.ai_css_enabled = QCheckBox(tr('启用 CSS 注入（默认关闭）'))
         self.ai_css_enabled.setChecked(bool(getattr(config, 'ai_css_enabled', False)))
-        general_layout.addWidget(self.ai_css_enabled)
-        tip = QLabel(tr('只在笔记实际写入成功后，为勾选的类型注入样式。保存设置不会修改卡片 CSS。'))
-        tip.setWordWrap(True)
-        general_layout.addWidget(tip)
+        general_layout.addWidget(with_help(self.ai_css_enabled, tr('内容格式与 CSS'), tr(
+            'Markdown 将标题、表格和列表等内容转换为卡片可显示的 HTML。CSS 注入默认关闭，重点美化表格。\n\n'
+            '全局 CSS 由勾选的笔记类型共用，类型默认全选，可按需取消；只有运行时实际成功写入笔记，才向该类型注入样式。'
+            '只保存设置或查询未产生修改时不会注入。只更新插件标记的区块，保留其他 CSS，相同内容不重复插入。')))
         self.css_toggle = QToolButton()
         self.css_toggle.setText(tr('查看／编辑全局 CSS'))
         self.css_toggle.setCheckable(True)
@@ -68,7 +76,7 @@ class SettingDialog(Dialog):
         panel = self.css_panel = QWidget()
         panel_layout = QVBoxLayout(panel)
         panel_layout.setContentsMargins(0, 0, 0, 0)
-        general_layout.addWidget(QLabel(tr('生效的笔记类型（默认全选，开启 CSS 注入后生效）')))
+        general_layout.addWidget(QLabel(tr('生效的笔记类型')))
         self.style_types = QListWidget()
         self.style_types.setStyleSheet('QListWidget::item { padding-left: 8px; }')
         self.style_types.setMaximumHeight(95)
@@ -83,9 +91,6 @@ class SettingDialog(Dialog):
         self.style_css = QPlainTextEdit(global_css(config))
         self.style_css.setMinimumHeight(125)
         panel_layout.addWidget(self.style_css)
-        tip = QLabel(tr('所有类型共用一份样式，重点美化表格。只更新标记的 AI 样式区块，保留其他卡片 CSS。'))
-        tip.setWordWrap(True)
-        panel_layout.addWidget(tip)
         panel.hide()
         self.css_toggle.toggled.connect(self._toggle_css)
         general_layout.addWidget(panel)
@@ -101,16 +106,16 @@ class SettingDialog(Dialog):
         automatic = QWidget()
         auto_layout = QVBoxLayout(automatic)
         language_form = QFormLayout()
-        language_form.addRow(tr('界面语言'), self.language_combo)
+        language_form.addRow(tr('界面语言'), with_help(self.language_combo, tr('界面语言'), tr('保存后重新打开窗口以应用语言。')))
         auto_layout.addLayout(language_form)
-        language_tip = QLabel(tr('保存后重新打开窗口以应用语言。'))
-        language_tip.setWordWrap(True)
-        auto_layout.addWidget(language_tip)
         settings = getattr(config, 'auto_run', {})
         settings = settings if isinstance(settings, dict) else {}
         self.auto_enabled = QCheckBox(tr('启用定时制作'))
         self.auto_enabled.setChecked(bool(settings.get('enabled', False)))
-        auto_layout.addWidget(self.auto_enabled)
+        auto_layout.addWidget(with_help(self.auto_enabled, tr('定时制作'), tr(
+            '只处理启用后新增笔记的空字段，使用对应类型的星标配置；没有有效星标时使用首份配置。'
+            '只检查勾选的类型，上一批未结束时跳过本轮，Anki 关闭后停止。\n\n'
+            '倒计时提示出现后可取消本轮，未操作则自动开始。此功能不会扫描并重做所有旧笔记。')))
         self.auto_panel = QWidget()
         schedule_layout = QVBoxLayout(self.auto_panel)
         schedule_layout.setContentsMargins(8, 0, 0, 0)
@@ -137,15 +142,21 @@ class SettingDialog(Dialog):
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if str(model['id']) in selected else Qt.CheckState.Unchecked)
         schedule_layout.addWidget(QLabel(tr('勾选参与自动制作的笔记类型')))
-        select = QCheckBox(tr('全选／取消全选'))
+        select = self.auto_select_all = QCheckBox(tr('全选／取消全选'))
+        select.setTristate(True)
         select.setProperty('fastcm_ephemeral', True)
-        select.toggled.connect(lambda checked: [self.auto_models.item(i).setCheckState(
+        select.clicked.connect(lambda checked: [self.auto_models.item(i).setCheckState(
             Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked) for i in range(self.auto_models.count())])
+        def refresh_selection(*_):
+            count = sum(self.auto_models.item(i).checkState() == Qt.CheckState.Checked for i in range(self.auto_models.count()))
+            select.blockSignals(True)
+            select.setCheckState(Qt.CheckState.Checked if count and count == self.auto_models.count() else
+                                 Qt.CheckState.PartiallyChecked if count else Qt.CheckState.Unchecked)
+            select.blockSignals(False)
+        self.auto_models.itemChanged.connect(refresh_selection)
+        refresh_selection()
         schedule_layout.addWidget(select)
         schedule_layout.addWidget(self.auto_models)
-        tip = QLabel(tr('使用点亮星星的配置。只处理启用后新增笔记的空字段；上一批未结束时跳过本轮。Anki 关闭后停止。'))
-        tip.setWordWrap(True)
-        schedule_layout.addWidget(tip)
         self.auto_panel.setVisible(self.auto_enabled.isChecked())
         self.auto_panel.setEnabled(self.auto_enabled.isChecked())
         self.auto_enabled.toggled.connect(self.auto_panel.setVisible)
@@ -159,6 +170,12 @@ class SettingDialog(Dialog):
 
         advanced = QWidget()
         advanced_layout = QFormLayout(advanced)
+        advanced_layout.addRow(with_help(QLabel(tr('词典查询')), tr('词典查询'), tr(
+            '强制更新字段：允许空查询结果清空目标字段；不勾选时保留原内容。是否查询已有内容仍由字段映射中的“跳过有值项”控制。'
+            '忽略声调：查询前去掉重音标记。忽略大小写：本地词典查找不区分大小写。\n\n'
+            '线程数控制词典查询并行量，不改变 AI 的每分钟发送数。媒体模糊匹配用于严格路径未找到时尝试相近资源名，可能匹配到同名资源。'
+            '音频缺失时先确认 MDD／资源完整，再尝试发送 HTML、JS 和原脚本让 AI 检查路径。\n\n'
+            '单词填空格式中的 %s 表示单词；音频格式中的 {0} 表示媒体文件名。修改格式前保留对应占位符。')))
         for attr, label, key, default in (
             ('check_force_update', _('FORCE_UPDATE'), 'force_update', False),
             ('check_ignore_accents', _('IGNORE_ACCENTS'), 'ignore_accents', False),
@@ -252,8 +269,26 @@ class SettingDialog(Dialog):
         self.input_cloze_str.setText('{{c1::%s}}')
         self.input_sound_str.setText('[sound:{0}]')
 
-    def save(self):
+    def pending_settings(self):
         selected = [self.auto_models.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.auto_models.count()) if self.auto_models.item(i).checkState() == Qt.CheckState.Checked]
+        return {
+            'backup_mode': self._backup_mode,
+            'backup_api_keys': self.backup_api_keys.isChecked(),
+            'ui_language': self.language_combo.currentData(),
+            'ai_send_mode': self.ai_send_mode.currentData(),
+            'ai_markdown': self.ai_markdown.isChecked(),
+            'ai_css_enabled': self.ai_css_enabled.isChecked(),
+            'ai_css': self.style_css.toPlainText(),
+            'ai_styles': {str(self.style_types.item(i).data(Qt.ItemDataRole.UserRole)): {'enabled': self.style_types.item(i).checkState() == Qt.CheckState.Checked} for i in range(self.style_types.count())},
+            'auto_run': {'enabled': self.auto_enabled.isChecked(), 'interval_minutes': self.auto_interval.value(), 'model_ids': selected},
+            'force_update': self.check_force_update.isChecked(),
+            'ignore_accents': self.check_ignore_accents.isChecked(),
+            'ignore_mdx_wordcase': self.check_ighore_mdx_wordcase.isChecked(),
+            'fuzzy_match': self.check_fuzzy_match.isChecked(),
+            'thread_number': self.input_thread_number.value(),
+            'cloze_str': self.input_cloze_str.text(), 'sound_str': self.input_sound_str.text()}
+
+    def save(self):
         if self.ai_css_enabled.isChecked():
             try:
                 rules(self.style_css.toPlainText())
@@ -269,22 +304,7 @@ class SettingDialog(Dialog):
             return False
         from ..service.ai_support.store import read_settings
         credentials = read_settings().get('keys', {})
-        config.update({
-            'backup_api_keys': self.backup_api_keys.isChecked(),
-            'credential_backup': credentials if self.backup_api_keys.isChecked() else {},
-            'ui_language': self.language_combo.currentData(),
-            'ai_send_mode': self.ai_send_mode.currentData(),
-            'ai_markdown': self.ai_markdown.isChecked(),
-            'ai_css_enabled': self.ai_css_enabled.isChecked(),
-            'ai_css': self.style_css.toPlainText(),
-            'ai_styles': {str(self.style_types.item(i).data(Qt.ItemDataRole.UserRole)): {'enabled': self.style_types.item(i).checkState() == Qt.CheckState.Checked} for i in range(self.style_types.count())},
-            'auto_run': {'enabled': self.auto_enabled.isChecked(), 'interval_minutes': self.auto_interval.value(), 'model_ids': selected},
-            'force_update': self.check_force_update.isChecked(),
-            'ignore_accents': self.check_ignore_accents.isChecked(),
-            'ignore_mdx_wordcase': self.check_ighore_mdx_wordcase.isChecked(),
-            'fuzzy_match': self.check_fuzzy_match.isChecked(),
-            'thread_number': self.input_thread_number.value(),
-            'cloze_str': self.input_cloze_str.text(), 'sound_str': self.input_sound_str.text()})
+        config.update(dict(self.pending_settings(), credential_backup=credentials if self.backup_api_keys.isChecked() else {}))
 
     def accept(self):
         previous = getattr(config, 'ui_language', '')

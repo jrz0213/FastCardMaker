@@ -122,8 +122,11 @@ class AISettingsDialog(Dialog):
                 self.parameters.setPlainText(json.dumps(parameter_defaults(provider, mode), ensure_ascii=False, indent=2))
         self._parameter_mode = mode
         notes = {
-            'deepseek': tr('DeepSeek：Chat 使用 thinking.type；Responses 使用 reasoning.effort。'),
-            'qwen': tr('Qwen 默认使用 Responses；enable_thinking=false 关闭思考。百炼地域或业务空间可能使用专属域名，请填写控制台对应的完整地址。'),
+            'deepseek': (tr('DeepSeek Responses 使用 reasoning.effort；none 关闭思考，high 表示较高思考强度，支持范围以模型为准。')
+                         if mode == 'responses' else tr('DeepSeek Chat 使用 thinking.type 开关思考，reasoning_effort 调整强度。')),
+            'qwen': (tr('Qwen Responses 使用 reasoning.effort；none 关闭思考，high 等档位以模型支持范围为准。')
+                     if mode == 'responses' else tr('Qwen Chat 使用 enable_thinking 开关思考。')) + '\n' +
+                    tr('百炼地域或业务空间可能使用专属域名，请填写控制台对应的完整地址。'),
             'gemini': tr('Gemini 默认使用官方 Interactions；generation_config 中填写 temperature 和 thinking_level。minimal 不等于关闭思考，支持范围取决于模型。'),
             'claude': tr('Claude 默认使用官方 Messages；max_tokens 是输出上限，thinking.type=disabled 是关闭思考的示例。'),
         }

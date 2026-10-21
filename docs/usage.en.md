@@ -1,217 +1,174 @@
-# FastCard Maker Practical Guide
+# FastCard Maker User Guide
 
-This add-on is based on [FastWordQuery (FastWQ)](https://github.com/sth2018/FastWordQuery), with the original author credits and license retained.
+Based on [FastWordQuery (FastWQ)](https://github.com/sth2018/FastWordQuery), with the original author credits and license retained.
 
-[简体中文](usage.zh-CN.md)
+FastCard Maker fills Anki note fields using AI, local MDX dictionaries or online dictionaries. Use them separately, or choose different sources for different fields of the same note. AI can help with concepts, questions and study material as well as vocabulary.
 
-Follow these steps to configure AI or dictionaries and process your notes. The screenshots use example fields, dictionaries and models; use your own settings.
+Start with a few notes before running a larger batch. Screenshots use example fields, dictionaries and models; your names may differ.
 
-For your first run, connect AI, configure fields, then test a few notes. AI and dictionaries work independently, or you can use different sources for different fields in the same configuration.
+## 1. Create cards with AI
 
-## Create cards with AI
-
-Built-in connection presets include:
-
-- **DeepSeek**
-- **Claude (Anthropic)**
-- **Qwen (Alibaba)**
-- **ChatGPT / OpenAI models**
-- **Gemini (Google)**
-
-You can also enter a custom API endpoint for other services or gateways supporting the corresponding API format. Enter your own API key and the corresponding model name.
-
-### 1. Prepare notes and connect AI
-
-Add notes in Anki and fill in a topic, question or study material. For example, create `Topic`, `Question` and `Answer` fields, fill the first two, and leave Answer for AI. The plugin fills existing notes; Anki templates control the front and back of each card.
+### Connect an AI service
 
 Open **FastCM → Options → AI settings**:
 
-1. Add a connection profile and give it a name.
-2. Enter the complete endpoint in **API address (including endpoint path)**, including its path, then enter the API key and model.
-3. Enter the key and a model that supports this API, then click **OK**.
-4. Optionally use **Skill** for shared instructions, such as “Answer concisely and include a concrete example.”
+1. Click **Add profile** and choose a **Provider preset**. Presets are available for OpenAI (ChatGPT), Claude, Gemini, DeepSeek and Qwen. For another compatible service, choose Custom.
+2. Give the profile a recognizable name.
+3. Enter the **API address**, **API key** and **Model**. The address must include the endpoint path, such as `https://api.deepseek.com/responses`. Preset URLs are editable; use a model supported by your service.
+4. Optionally enter shared instructions in **Skill**, such as “Explain clearly and include a concrete example.” Click **OK** to save.
 
-![AI connection settings](images/user-guide/en-ai-settings.png)
+![Add an AI connection](images/user-guide/en-ai-settings.png)
 
-Example URLs: `https://api.deepseek.com/responses` or `https://maas.qianwenaiapi.com/compatible-mode/v1/responses`. Selecting a service preset fills its complete endpoint automatically; there is no API mode selector. OpenAI, DeepSeek and Qwen default to Responses, Gemini to the official Interactions API, and Claude to Messages. Enter a model that supports that API. Existing profiles keep their addresses; check custom parameters when changing an endpoint.
+Use **More settings → Custom parameters (JSON)** for reasoning settings. DeepSeek and Qwen both default to **Responses**, with `reasoning.effort` set to `none` in new profiles to disable thinking. Model support for disabling thinking and available levels varies.
 
-Qwen/Model Studio regions and workspaces may require dedicated domains, so use the complete endpoint from your console. Gemini parameters belong inside `generation_config` (for example `temperature: 1`, `thinking_level: "minimal"`); minimal does not disable thinking. Claude defaults to `max_tokens: 4096`, editable under More settings.
+These connections also serve dictionary script analysis. Consider a separate “Dictionary parsing” profile with higher reasoning effort for complex scripts. The table contains reasoning settings only; replace the custom parameters with a supported example. Provider names link to official documentation.
 
-Open **More settings → Custom parameters (JSON)** to edit the examples or add supported parameters. For Responses:
+| Service and API | Higher-reasoning JSON example |
+| --- | --- |
+| [OpenAI (Responses)](https://developers.openai.com/api/docs/guides/reasoning) | `{"reasoning":{"effort":"high"}}` |
+| [DeepSeek (Responses)](https://api-docs.deepseek.com/guides/responses_api/) | `{"reasoning":{"effort":"high"}}` |
+| [Qwen / Model Studio (Responses)](https://help.aliyun.com/zh/model-studio/qwen-api-via-openai-responses) | `{"reasoning":{"effort":"high"}}` |
+| [Claude (Messages, adaptive-thinking models)](https://platform.claude.com/docs/en/build-with-claude/adaptive-thinking) | `{"thinking":{"type":"adaptive"},"output_config":{"effort":"high"},"max_tokens":16000}` |
+| [Gemini (Interactions)](https://ai.google.dev/api/interactions-api-v1) | `{"generation_config":{"thinking_level":"high"}}` |
 
-```json
-{
-  "temperature": 1,
-  "reasoning": {"effort": "none"},
-  "top_p": 1
-}
-```
+Use examples supported by your model; `high` does not imply the same reasoning budget across services. The Claude example retains the required `max_tokens` output limit, which can be adjusted. Older models may need different thinking settings. Higher effort can increase waiting time and token use; click **?** for parameter help.
 
-Temperature 1 and thinking disabled are editable examples, without automatic model filtering. DeepSeek Chat uses `"thinking":{"type":"disabled"}`; Qwen (including Responses) uses `"enable_thinking":false`. Follow the notes under the input, remove unsupported parameters and omit JSON comments. Top-level `content` support depends on the API; use the conversation input to ask “Continue the previous answer.”
+Region or workspace settings may require a different URL, especially with Model Studio; use the endpoint from your own console.
 
-Shared request rate, request/connection timeouts and retries are in **Plugin settings → AI settings**.
+### Map fields and write prompts
 
-Click **?** beside a setting group for explanations of sending modes, request settings, CSS and backups.
+Prepare your notes in Anki first. For a concept example, create `Topic`, `Question`, `Answer` and `Comparison` fields. Enter “Statistics” in Topic and “How do correlation and causation differ?” in Question, leaving the other two for AI.
 
-### 2. Select target fields and write prompts
+In **FastCM → Options**, select the corresponding note type:
 
-Select the note type in Options, then configure its fields:
+1. Use the radio button on the left to select Topic as the source field.
+2. Keep Topic and Question ignored so their contents are preserved.
+3. Uncheck **Ignore** for Answer, choose the saved AI connection as its content source, and enter a prompt.
+4. Configure Comparison the same way if needed, with its own prompt. Click **OK** to save the mapping.
 
-1. Use the radio button to select a source field, such as Topic.
-2. Keep **Ignore** selected for fields you do not want to update.
-3. Choose your AI connection for Answer, clear **Ignore**, and enter a prompt.
-4. Click **OK** to save the field configuration.
+![Choose sources and enter prompts](images/user-guide/en-configuration.png)
 
-Options reopens the last saved note type and viewed configuration tab, without changing the default used by Browser queries. Unsaved changes are discarded on exit.
-
-![Source fields, AI and prompts](images/user-guide/en-configuration.png)
-
-One prompt can reference multiple fields:
+Prompts can reference several fields:
 
 ```text
 Using {{Topic}}, answer this question: {{Question}}
-Give a direct answer followed by one example. Keep it under 150 words.
+Start with a direct answer, then give one example. Keep it under 150 words.
 ```
 
-The plugin inserts values from the current note. Names must match your actual fields, and referenced fields must not be configured as AI outputs. Put field references in target-field prompts, rather than Skill.
+Placeholders are replaced with values from the current note. Field names must match exactly, and referenced fields must not also be AI output fields. Put field references in the field’s prompt rather than Skill.
 
-For tables, ask directly for a Markdown comparison table. Different target fields can have different instructions.
+For Comparison, try `Compare definitions, examples and common misconceptions about {{Question}} in {{Topic}}, using a Markdown table.` Switching the field’s AI connection preserves its prompt.
 
-### A complete example: learning a concept
+Vocabulary works the same way: use a word as the source, then request meanings, examples or synonyms in other fields. The add-on fills existing notes. If results do not appear on cards, add the output fields to the relevant Anki card template under **Cards…**.
 
-1. Create Topic, Question, Answer and Comparison fields in Anki. Add a note with “Statistics” as Topic and “How do correlation and causation differ?” as Question.
-2. Select this note type in Options and choose Topic as the source field. Keep Topic and Question unchanged; do not configure them as AI outputs.
-3. Clear Ignore for Answer, choose your AI connection, and use the multi-field prompt above.
-4. Clear Ignore for Comparison, select the same AI, and enter: `For {{Question}} within {{Topic}}, create a Markdown table comparing definitions, examples and common mistakes.`
-5. Save, select just this note in the Browser, and query it. The results go to Answer and Comparison separately. If the back of the card does not show them, add these fields to the back template using Anki’s Cards… button.
+### Test a few notes, then run a batch
 
-For vocabulary, put a word in the source field and request meanings, examples or related words in separate target fields. Combined sending assigns replies to the target fields automatically; you do not need to write a JSON-splitting script.
+Select a few notes in the Anki Browser and choose **FastCM → Query Selected**. Inspect the results before processing more notes.
 
-### 3. Test selected notes, then process whole types
+For a larger batch, open **FastCM → Query whole note types**, check the required types, choose a saved configuration for each, then click **Query**.
 
-Select a few notes in Anki's Browser and click **FastCM → Query selected**. Inspect the generated content first.
+![Choose note types and saved configurations](images/user-guide/en-type-query.png)
 
-When satisfied, open **FastCM → Query whole note types**:
+This processes **all notes of the checked types**, regardless of the current deck or Browser selection. Opening from the Browser preselects types represented by selected notes; opening from the main window selects none.
 
-1. Check the note types to process.
-2. Choose a saved configuration for each type.
-3. Click **Query** to process all notes of the selected types.
+**Skip existing values** controls whether a populated field is queried again. To regenerate one field, clear that option and ignore other targets. Save changes before running the query.
 
-![Select note types and configurations, then query](images/user-guide/en-type-query.png)
-
-When opened from the Browser, types represented by selected notes are checked automatically. From Anki's home window, select them yourself. Save configuration changes before querying. To replace existing content, clear **Skip existing values** on the target field.
-
-### 4. Set sending mode, table styles and background operation
+### Sending, formatting and progress
 
 Open **Plugin settings → AI settings**:
 
-- **Combine by note:** the default; target fields on one note using the same AI connection share a request.
-- **Send per field:** each target field gets its own request.
-- **Markdown:** formats tables, lists and other Markdown in replies; enabled by default.
-- **CSS injection:** enable it for table styles and select affected types in the always-visible list. Only the stylesheet editor is folded; click **View / edit shared CSS** to expand it. Injection is off by default and applies after content is actually updated for a selected type.
+- **One request per card** is the default: fields of the same note using the same AI connection share one request, and results are assigned to their respective fields.
+- **One request per field** requests each target separately.
+- **Render Markdown** converts headings, lists and tables to card HTML; enabled by default.
+- **Enable CSS injection** is off by default. Turn it on and select the note types that should use the shared style. **View / edit shared CSS** opens the editor. Styles are added after a query actually writes a note of that type; saving settings alone does not modify card styling.
 
-Use **Dictionary settings** for dictionary workers, matching and cloze format; use **General settings** for language, scheduled generation and backup mode.
+![Sending and formatting settings](images/user-guide/en-settings.png)
 
-![Sending mode and formatting settings](images/user-guide/en-settings.png)
+The shared request rate, timeouts and retries are on this page too. Dictionary threads, matching and cloze format are under **Dictionary settings**; language, scheduling and backups are under **General settings**. Click **?** beside a group for details.
 
-During a query, click **Run in background** to continue using Anki. Check **FastCM → Task progress**, inspect results when finished, and click **Finish task** to hide progress. Keep Anki open. Results are saved every 30 seconds, with remaining content saved at the end.
+Click **Run in background** to continue using Anki. Reopen **FastCM → Task progress** to inspect status and results; **Finish task** hides the completed progress strip. Results are written about every 30 seconds, with remaining results written when the task finishes.
 
-If a recovery dialog appears after restarting, click **Recover results** to apply cached output or **Later** to keep it for another time.
+Closing Anki interrupts the task. If a recovery prompt appears on the next launch, restore replies already received and cached. Unfinished requests are not recovered this way.
 
-### 5. Optional: schedule new-note processing
+### Automatically process new notes
 
-Star the desired configuration in Options and save. Choose one automatic configuration for each note type.
+Each note type initially uses its first configuration as the starred configuration. To change it, click another configuration’s star in Options and save.
 
-In **Plugin settings → General settings**, enable scheduling, set an interval such as five minutes, select note types and save. It fills empty fields of notes added after enabling the feature. An active batch causes the next tick to be skipped.
+Under **Plugin settings → General settings**, enable scheduled generation, set the interval, select note types and save. Only empty fields of notes created after enabling the feature are processed. If a batch is still running, the next tick is skipped.
 
-When notes are ready, a top prompt counts down **10 seconds**. Click **Run now**, **Skip this run**, or wait to start automatically. Closing the prompt skips this tick. Automatic tasks do not show an extra completion notification; check Task progress. Keep Anki open.
+![Countdown before a scheduled batch](images/user-guide/en-automatic-countdown.png)
 
-![Countdown before an automatic run](images/user-guide/en-automatic-countdown.png)
+When eligible notes are found, a ten-second countdown offers **Run now** or **Skip this run**. Closing the prompt also skips; leaving it alone starts the batch. Keep Anki open and check Task progress for results.
 
-### 6. Synchronize or read configuration
+### Save settings, back up and use another computer
 
-In automatic backup mode, opening **FastCM → Options** compares local settings with the copy in the media folder. A prompt appears only when they differ; expand its details to see the changed settings:
+Click **OK** to save changes. Closing an edited settings window asks whether to save; an unchanged window closes immediately.
 
-- **Overwrite:** replace the media-folder copy with this device’s settings.
-- **Sync:** read the media-folder copy into this device.
-- **Cancel:** keep both copies and continue using local settings. Subsequent edits stay local until the difference is resolved.
+Under **Plugin settings → General settings → Configuration backup**, choose:
 
-Basic preferences are stored in `_fastcmcfg.json` in the media folder; AI connections, field mappings and current Python scripts share `_fastcm_backup.zip`. The working local copy is `_fastcm_local.json` in the current profile. Dictionary folders and machine-specific paths remain local. API keys are stored locally in `fastcm/ai/config.json`; the General settings switch controls whether they also enter backups, enabled by default.
+- **Automatic backup**: saving configurations or current scripts updates `_fastcm_backup.zip` in the media folder, which syncs with Anki media.
+- **Manual backup**: edits stay local; use **Import ZIP / Export ZIP** explicitly, with the media folder as the default location. Export includes saved settings only, so save edits with OK first. Import warns that unsaved changes on the current settings page will be discarded.
 
-For manual transfers choose **Manual backup** under **Plugin settings → General settings → Configuration backup**, then use **Import ZIP / Export ZIP**, defaulting to the media folder. Export includes saved settings only. After edits, click **OK** to save, then reopen settings to export. Import discards unsaved page changes and closes the page, as stated in its confirmation; local dictionary paths are retained.
+![General settings and backup controls](images/user-guide/en-general-settings.png)
 
-Set dictionary folders separately on each computer. Missing dictionaries are never silently replaced with another source.
+**Include API keys in backup (plaintext)** is checked by default. Uncheck and save to exclude keys while retaining local credentials. A backup without keys does not clear existing local keys; connections without a usable key show “Missing API Key”.
 
-## Dictionaries and parser scripts
+In automatic mode, differing settings offer **Overwrite** (local to backup), **Sync** (backup to local) or **Cancel** (keep both for now). Differing scripts use per-file choices, described below.
 
-### 1. Add dictionaries and map fields
+Backups exclude dictionary files and paths, dictionary JavaScript, conversations and recycled scripts. Add dictionary folders separately on another computer. On first use, current FastCard Maker settings take precedence, with legacy FastWQ settings used when absent; subsequent saves use FastCard Maker filenames.
 
-1. Add a folder in **Dictionary manager → Dictionary folders**. Keep associated MDD files and resources with your MDX dictionaries.
-2. Enable the desired sources under **Local dictionaries** or **Online dictionaries**, then save.
-3. In Options, choose the field containing the word as the source. Choose a dictionary and data item for each target, clear **Ignore**, and save.
-4. Query a few selected notes before processing whole note types.
+## 2. Use dictionaries and parser scripts
 
-![Enable the dictionaries you want](images/user-guide/en-dictionary-manager.png)
+### Add dictionaries and choose data items
 
-If a dictionary moves, restore its path and rescan. Unavailable sources are not automatically replaced. Use default parsing for complete entries, or a script for separate meaning, example or pronunciation items.
+1. Open **FastCM → Options → Dictionary manager → Dictionary folders** and add the folder containing your local dictionaries. Subfolders are supported; keep associated MDD and resource files complete.
+2. Under **Local dictionaries**, enable the required dictionaries and save. For online services, enable the corresponding items under **Online dictionaries** instead.
+3. In Options, select a source field such as Word. Choose a dictionary and data item for each target, clear Ignore and save.
+4. Query a few notes to check text and media before running a batch.
 
-**Audio import tip:** If entries display but audio cannot be imported, the dictionary's JavaScript may be changing audio filenames or paths dynamically, leaving default parsing unable to resolve them. First check that the MDD and resource files are complete. Then try **AI parse** with **Send HTML** and **Send JS** selected; include **Send original script** when revising an existing parser. For example: “Check whether JS changes audio paths, fix pronunciation extraction, and preserve other fields.” Inspect the preview, run debugging, save the parser and test a few notes. AI may not resolve every dynamic rule, and a parser cannot restore missing audio files.
+![Enable the dictionaries you need](images/user-guide/en-dictionary-manager.png)
 
-### 2. Generate or revise a parser with AI
+Use default parsing for the complete entry, or a custom parser for separate meanings, examples or pronunciation. Add existing `.py` parsers through **Import script**; placing Python files beside dictionaries does not import them.
 
-Click **AI parse** beside the dictionary:
+New scripts prefer the **MDX filename**, with an optional internal title, rather than a fixed machine path. If a dictionary moves, add its new folder and rescan. Legacy fixed paths and existing audio handling remain supported; filename matching takes precedence when both bindings exist. Multiple matches require you to adjust imported folders rather than silently choosing a file.
 
-1. Select a configured AI connection. Parsing uses your Command, without the connection's Skill.
-2. Keep the three default samples or enter three different words from the dictionary.
-3. Describe the output in **Command**, for example “Extract meanings, phonetics and pronunciation separately; check whether JS changes audio paths.”
-4. Select **Send HTML**, **Send JS** and **Send original script** as needed. Send HTML and JS for audio-path repairs; include the original script when revising one.
-   **Return JSON rules** is checked by default: the add-on turns rules into Python for standard extraction. Uncheck it for complete Python, allowing complex logic and nested HTML restructuring. Initial and follow-up instructions both follow this selection. Click **?** for help.
-5. Click **Send three entries and generate**, inspect the extraction preview and generated script, then click **Save script**.
-6. Enable the dictionary in Dictionary manager, then select its data items in Options and save.
+Missing dictionaries or data items show **Unavailable** and are skipped rather than replaced with another source.
 
-![Samples, command and source attachments](images/user-guide/en-script-generator.png)
+If images or audio fail to import, check MDD/resources first, then try fuzzy media matching under Dictionary settings and inspect the result. Dictionary JavaScript may be changing media paths; try AI parsing below. Missing source media cannot be recreated by a parser.
 
-### 3. Debug and continue the conversation
+### Generate or revise a parser with AI
 
-Click **Debug** after generation to check three samples and read errors in **Information history**. JSON mode checks template-generated methods. Direct Python output receives syntax and structure checks only until you review the source and click Debug, which executes the complete script and its exports. Complete Python can access files and the network, so passing syntax checks does not guarantee safety or correctness. Test a few notes after saving.
+Click **AI parse** beside the dictionary. Use your separate Dictionary parsing profile if available, with reasoning settings supported by its model.
 
-![Conversation roles and the input below](images/user-guide/en-script-information.png)
+1. Choose an AI profile. Default samples cover a noun (`concept`), verb (`maintain`) and adjective (`relevant`), with alternatives when missing. You can enter three different words found in the dictionary instead.
+2. Describe the task in **Command**, for example “Extract meanings, phonetics and pronunciation; check JS audio-path changes and preserve other fields.” Parsing uses this command without the connection’s Skill.
+3. Select **Send HTML**, **Send JS** and **Send original script** as needed. Include HTML and JS for audio-path repairs and the original parser when revising one. Missing attachments are skipped.
+4. Choose the output mode and click **Send three entries and generate**. Inspect the preview and source, click **Debug** if needed, then **Save script**. Enable it in Dictionary manager and select its data items in your field mapping.
 
-- Enter a follow-up in the input below and click **Send message**, such as “Fix audio paths using the debug errors and keep the other fields.”
-- **Include all messages** is selected by default. Choose **Include checked messages** to send only messages selected on the right, including individual debug reports. New messages start unchecked; no checked messages means no history is sent.
-- Messages show timestamps and up to five lines. **Expand / Collapse** appears after the message. Select messages with the checkboxes on the right, then **Copy selected content**, or use **Copy all / Export Markdown**.
-- **Import conversation** reads a TXT or Markdown file as context; use Include all messages, or check the imported message and use Include checked messages. Conversations are not saved automatically, so export before closing if needed.
-- After an AI revision, inspect the preview and **Save script** again. **Restore old script** lists versions by name and deletion time, with **Restore** and read-only **Open**. Versions are kept for seven days. Close the window using × at the top right.
+![Samples, command and output mode](images/user-guide/en-script-generator.png)
 
-History and source attachments increase token usage and may exceed the model limit. If needed, include only a few checked messages or start a new session.
+**Return JSON rules** is checked by default: AI describes extraction rules and the add-on generates Python, suitable for standard extraction. Uncheck it for complete Python that can handle complex paths or restructure nested content. Both modes save `.py` files, with matching instructions used for generation and follow-up messages.
 
+Direct Python output receives syntax and structure checks during generation. Clicking Debug or loading a saved script executes code; passing checks does not guarantee correct results.
 
-## Common tasks and fixes
+### Read debug results and continue the conversation
 
-- **Nothing was filled:** check that the target is not ignored, the correct source is selected, and Skip existing values is not skipping its current content. Open Task progress for failure details.
-- **Regenerate one field:** clear Skip existing values for that field and ignore other targets. Save, select a few notes, and query again. Regeneration replaces the target’s previous content.
-- **Changes seem to have no effect:** save both the AI connection dialog and the main Options dialog with OK, then select that saved configuration in the whole-type query dialog.
-- **Connection or parameter error:** check the key, model, complete endpoint. If the API rejects a parameter, remove it from the JSON under More settings and retry.
-- **Missing dictionary content or audio:** restore the MDX, associated MDD and resource paths, then rescan. For dictionaries whose JS changes audio paths, send both HTML and JS when generating a parser, then debug and test a few notes.
-- **Background window disappeared:** reopen FastCM → Task progress. Minimizing keeps the task running; closing Anki stops further requests. Cached replies can be recovered on the next launch.
+**Debug** checks three samples and adds results and detailed errors to **Information history**. Enter a follow-up below and click **Send message** to ask for changes.
 
+![Messages, debug results and follow-up input](images/user-guide/en-script-information.png)
 
-### Script backup and recovery
+- **Include all messages** is selected by default. **Include checked messages** sends only history checked on the right. New messages start unchecked; select individual debug reports when you want AI to consider them.
+- Messages show timestamps and fold after five lines. Use **Expand / Collapse** after a message. Check messages to **Copy selected content**, or use **Copy all / Export Markdown**.
+- **Import conversation** reads TXT or Markdown as reference context. Messages are not saved automatically; export before closing if you want to keep them.
 
-Choose **Automatic backup** or **Manual backup** under **Plugin settings → General settings → Configuration backup**. Automatic mode saves AI connections, field mappings and Python dictionary parsers together in `_fastcm_backup.zip`, which syncs with Anki media. Legacy script backups remain readable. Manual mode keeps edits local; use **Import ZIP / Export ZIP** explicitly, with the media folder as the default location.
+History and source code increase token use. For long conversations, include fewer checked messages or close the window and start again. Review each AI revision and **Save script** to apply it.
 
-Runtime Python copies live in `fastcm/scripts` within the current Anki profile. **Recycled old scripts stay on this device and are excluded from both automatic backups and manual ZIP exports.** After restoration they participate as current scripts. Dictionary JavaScript stays with the dictionary; select Send JS when AI analysis needs it. Folder scans no longer import adjacent Python files. Use **Dictionary manager → Import script** instead.
+### Choose script versions and restore an earlier one
 
-Opening Options checks script content fingerprints. If versions differ, entering dictionary or AI settings shows a file chooser with **Local version / Backup version**, defaulting to Backup. Header checkboxes select an entire side; individual rows can then be changed. Each side shows its size and **Open**, which displays read-only source inside the add-on without executing it. Selecting a missing side deletes the file, with confirmation. If no ZIP exists, current scripts create the first backup. Matching copies update automatically when a script is saved; differing copies require a choice.
+In automatic mode, differing local and backup scripts appear in a file list. Choose **Local version** or **Backup version** for each; Backup is selected by default. Header checkboxes select an entire side before individual adjustments.
 
-New parsers prefer MDX filenames, with an optional internal title, and search subfolders recursively. Legacy paths and existing audio logic remain supported; filename matching takes precedence when both bindings exist. Multiple matches require you to adjust imported folders; the first match is never silently chosen. Removing a folder preserves scripts and mappings. Missing items show “Unavailable” and are skipped during queries.
+![Choose which script versions to keep](images/user-guide/en-script-comparison.png)
 
-![Choose local or backup scripts](images/user-guide/en-script-comparison.png)
+Each side shows file size. **Open** displays read-only source without executing it. Choosing a missing side deletes that file, with confirmation. Close the window to leave choices unapplied.
 
-### Saving settings and API keys
-
-Settings keep an opening snapshot in memory. Closing, Cancel or Esc exits immediately if values match; otherwise choose **Save / Discard / Cancel**. Changing a value back does not count as an edit. FastCard Maker settings take precedence; when absent, legacy FastWQ settings are read without overwriting the old file. `_fastcmcfg.json` keeps basic preferences; the unified backup holds AI connections, field mappings and scripts. Dictionary paths stay local. Switching AI connections preserves your field prompt. The first configuration is starred by default; deleting the starred configuration selects the first remaining one.
-
-**Configuration backup → Include API keys in backup (plaintext)** is enabled by default. Keys are stored in settings inside the ZIP and sync with media in automatic mode. Disable it to omit keys from backups while retaining local credentials. Importing a backup without keys does not clear existing local keys. Connections without a usable key display “Missing API Key”. Chat and debug messages stay in the current window only and are not automatically saved or included in the ZIP.
-
-![Scheduled generation and backup controls](images/user-guide/en-general-settings.png)
+To undo a script change, click **Restore old script**, select a version by filename and deletion time, then **Restore** or **Open** to inspect it first. **Recycled scripts stay on this device, are excluded from backups and sync, and are cleaned up after seven days.** A restored version participates in backup only after becoming the current script.

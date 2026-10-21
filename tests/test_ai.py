@@ -338,11 +338,25 @@ class AITests(unittest.TestCase):
             ('deepseek', 'chat', 'thinking', {'type': 'disabled'}),
             ('deepseek', 'responses', 'reasoning', {'effort': 'none'}),
             ('qwen', 'chat', 'enable_thinking', False),
+            ('qwen', 'responses', 'reasoning', {'effort': 'none'}),
             ('claude', 'chat', 'thinking', {'type': 'disabled'}),
             ('gemini', 'chat', 'reasoning_effort', 'none')):
             profile = self.settings.new_profile(provider)
             profile.update(mode=mode, base_url='https://example.test/' + ('responses' if mode == 'responses' else 'chat/completions'), parameters=parameters.defaults(provider, mode))
             self.assertEqual(ai.request_payload(profile, 'hi')[key], value)
+
+    def test_deepseek_and_qwen_responses_share_defaults_and_keep_custom_parameters(self):
+        ai = self.load('service.ai')
+        for provider in ('deepseek', 'qwen'):
+            profile = self.settings.new_profile(provider)
+            self.assertEqual(profile['mode'], 'responses')
+            self.assertTrue(profile['base_url'].endswith('/responses'))
+            self.assertEqual(profile['parameters'], {'temperature': 1, 'reasoning': {'effort': 'none'}})
+            profile['parameters']['reasoning']['effort'] = 'high'
+            self.assertEqual(ai.request_payload(profile, 'hi')['reasoning']['effort'], 'high')
+        qwen = self.settings.new_profile('qwen')
+        qwen['parameters'] = {'enable_thinking': False}
+        self.assertFalse(ai.request_payload(qwen, 'hi')['enable_thinking'])
 
     def test_no_output_cap_even_for_old_profiles(self):
         ai = self.load('service.ai')

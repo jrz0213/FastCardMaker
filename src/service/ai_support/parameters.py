@@ -13,7 +13,7 @@ def defaults(provider, mode):
     data = {'temperature': 1}
     if provider in ('deepseek', 'claude') and mode == 'chat':
         data['thinking'] = {'type': 'disabled'}
-    elif provider == 'qwen':
+    elif provider == 'qwen' and mode != 'responses':
         data['enable_thinking'] = False
     elif mode == 'responses':
         data['reasoning'] = {'effort': 'none'}

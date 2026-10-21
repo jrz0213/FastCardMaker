@@ -6,6 +6,7 @@ from aqt import mw
 from aqt.qt import *
 
 from ..constants import Endpoint
+from ..context import config
 from ..utils import get_icon
 from .options_widgets import CTabBar
 from .flow_layout import FlowLayout
@@ -43,6 +44,16 @@ def build_options_layout(self, s):
         self.model_combo.addItem(m.name, userData=m.id)
         if self.current_model and m.id == self.current_model['id']:
             self.model_combo.setCurrentIndex(i)
+    data = getattr(config, 'data', {})
+    if isinstance(data, dict):
+        existing = {str(m.id) for m in sorted_models}
+        for mid in data:
+            if mid.isdigit() and mid not in existing:
+                metadata = data.get('note_type_meta', {}).get(mid, {})
+                self.model_combo.addItem(metadata.get('name', mid) + ' (' + tr('不可用') + ')', int(mid))
+                self.model_combo.model().item(self.model_combo.count() - 1).setEnabled(False)
+                if str(self.model_id) == mid:
+                    self.model_combo.setCurrentIndex(self.model_combo.count() - 1)
     self.model_combo.blockSignals(False)
     self.model_combo.currentIndexChanged.connect(self.on_model_combo_changed)
 

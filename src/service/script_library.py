@@ -52,9 +52,6 @@ def validate(library):
         if not isinstance(source, str) or len(source) > 500000:
             raise ValueError('Invalid dictionary script')
         ast.parse(source)
-        binding = source_binding(source)
-        if binding and portable_source(source) != source:
-            raise ValueError('Dictionary script contains a legacy path binding')
 
 
 def publish(directory, javascript=None, dict_path=None):

@@ -14,7 +14,8 @@ _matched = {}
 
 
 def backup_path():
-    return Path(media_directory()) / '_fastcm_scripts.zip'
+    from ..utils.backup_store import archive_path
+    return archive_path()
 
 
 def digest(files):
@@ -24,7 +25,11 @@ def digest(files):
 
 
 def read_backup():
-    path = backup_path()
+    from ..utils.backup_store import read_bundle
+    bundle = read_bundle()
+    if bundle is not None and bundle['initialized']:
+        return bundle['scripts']
+    path = Path(media_directory()) / '_fastcm_scripts.zip'
     if not path.exists():
         return None
     try:
@@ -42,22 +47,8 @@ def read_backup():
 
 
 def write_backup(files):
-    validate(files)
-    target = backup_path()
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = None
-    try:
-        with tempfile.NamedTemporaryFile(dir=target.parent, prefix='.fastcm-scripts-', delete=False) as stream:
-            temporary = stream.name
-            with zipfile.ZipFile(stream, 'w', zipfile.ZIP_DEFLATED) as archive:
-                for name, item in sorted(files.items()):
-                    archive.writestr(name, item['source'])
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, target)
-    finally:
-        if temporary and os.path.exists(temporary):
-            os.remove(temporary)
+    from ..utils.backup_store import write_bundle
+    write_bundle(scripts=files)
 
 
 def state_path():
@@ -67,6 +58,9 @@ def state_path():
 def initialize():
     local = snapshot(script_directory())
     remote = read_backup()
+    from ..utils.backup_store import automatic
+    if not automatic():
+        return local, remote
     if remote is None:
         if local:
             write_backup(local)
@@ -85,6 +79,9 @@ def observe():
 
 
 def auto_publish():
+    from ..utils.backup_store import automatic
+    if not automatic():
+        return True
     local, remote = initialize()
     if remote is None or local == remote:
         atomic_write(state_path(), dict(read_object(state_path()), baseline=digest(local)))

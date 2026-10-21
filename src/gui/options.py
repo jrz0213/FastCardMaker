@@ -61,7 +61,7 @@ class OptionsDialog(Dialog):
         if self.model_id:
             self.current_model = mw.col.models.get(self.model_id)
 
-        if not self.current_model and mw.col.models.all():
+        if not self.current_model and not self.model_id and mw.col.models.all():
             self.current_model = mw.col.models.all()[0]
             self.model_id = self.current_model['id']
 
@@ -248,7 +248,7 @@ class OptionsDialog(Dialog):
         maps_list = {'list': [conf], 'def': 0} if isinstance(conf, list) else conf
         self.default_tab_index = maps_list.get('def', 0)
         selected = maps_list.get('auto', -1)
-        self.auto_tab_index = selected if type(selected) is int and 0 <= selected < len(maps_list['list']) else -1
+        self.auto_tab_index = selected if type(selected) is int and 0 <= selected < len(maps_list['list']) else 0
 
         for maps in maps_list['list']:
             self.addTab(maps, False)
@@ -275,6 +275,8 @@ class OptionsDialog(Dialog):
         tab = TabContent(self.current_model, maps['fields'] if maps else None,
                          self.dict_services, self.controller, parent_dialog=self)
         self.tabs.append(tab)
+        if self.auto_tab_index < 0:
+            self.auto_tab_index = 0
         self.tab_widget.addTab(tab, maps['name'] if maps else _('CONFIG_INDEX') % (i + 1))
         star = QToolButton(self.tab_widget)
         star.setCheckable(True)
@@ -312,7 +314,7 @@ class OptionsDialog(Dialog):
         elif self.default_tab_index > i:
             self.default_tab_index -= 1
         if self.auto_tab_index == i:
-            self.auto_tab_index = -1
+            self.auto_tab_index = 0 if self.tabs else -1
         elif self.auto_tab_index > i:
             self.auto_tab_index -= 1
         self.update_auto_stars()

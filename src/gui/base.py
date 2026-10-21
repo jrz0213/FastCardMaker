@@ -56,8 +56,10 @@ class Dialog(QDialog):
         self._initial_values = deepcopy(reader())
 
     def widget_values(self):
-        values = []
+        values = [getattr(self, '_backup_mode', None)]
         for widget in self.findChildren(QWidget):
+            if widget.property('fastcm_ephemeral'):
+                continue
             if isinstance(widget, QComboBox):
                 values.append(widget.currentText() if widget.isEditable() else widget.currentData())
             elif isinstance(widget, QLineEdit):

@@ -186,6 +186,9 @@ class OptionsController:
         data = dict()
         current_model_id = str(current_model['id'])
         data[current_model_id] = tabs_data
+        metadata = deepcopy(getattr(config, 'data', {}).get('note_type_meta', {}))
+        metadata[current_model_id] = {'name': current_model['name'], 'fields': [f['name'] for f in current_model['flds']]}
+        data['note_type_meta'] = metadata
         data['last_model'] = current_model['id']
         logger.info(f"保存查询选项配置 | 目标模型: [{current_model['name']}] | 包含标签页: {len(tabs_data['list'])} 个")
         config.update(data)

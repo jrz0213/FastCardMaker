@@ -109,7 +109,7 @@ def add_dict_layout(self, i, **kwargs):
         self.fill_field_combo_options(
             field_combo, dict_combo.currentText(),
             dict_combo.itemData(index), field_combo.currentText(),
-            field_combo.itemData(field_combo.currentIndex()), allow_default=True)
+            field_combo.itemData(field_combo.currentIndex()), allow_default=False)
         refresh_prompt()
 
     dict_combo.currentIndexChanged.connect(dict_combo_changed)
@@ -186,7 +186,7 @@ def fill_dict_combo_options(self, dict_combo, current_unique, services):
         saved = dict_combo.property('fwq_saved_dictionary_name')
         title = saved if isinstance(saved, str) and saved else str(current_unique or '')
         title = re.sub(r'^[🌐🟢⚪🔴🤖\s]+', '', title or '')
-        dict_combo.addItem(tr('⚠️ %s（来源不可用，原设置保留）') % title, userData=current_unique)
+        dict_combo.addItem(title + ' (' + tr('不可用') + ')', userData=current_unique)
         item = dict_combo.model().item(dict_combo.count() - 1)
         if item:
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
@@ -270,13 +270,15 @@ def fill_field_combo_options(self, field_combo, dict_combo_text,
         for i, each in enumerate(fields):
             field_combo.addItem(each, userData=i)
         valid_order = type(dict_fld_ord) is int and 0 <= dict_fld_ord < len(fields)
-        if fields and (valid_order or allow_default):
+        name_matches = any(each == dict_fld_name for each in fields)
+        if fields and (name_matches or not dict_fld_name and valid_order or allow_default):
             selected = next((i for i, each in enumerate(fields) if each == dict_fld_name), None)
             if selected is None:
                 selected = dict_fld_ord if valid_order else 0
             field_combo.setCurrentIndex(selected)
         elif unique:
-            field_combo.addItem(tr('⚠️ %s（字段不可用，原映射保留）') % (dict_fld_name or str(dict_fld_ord)), userData=dict_fld_ord)
+            field_combo.addItem(tr('不可用'), userData=-1)
+            field_combo.setToolTip(dict_fld_name or str(dict_fld_ord))
             index = field_combo.count() - 1
             item = field_combo.model().item(index)
             if item:

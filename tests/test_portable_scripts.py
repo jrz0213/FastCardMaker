@@ -15,6 +15,25 @@ def mdx(path, title):
 
 
 class PortableScriptTests(unittest.TestCase):
+    def test_bundled_mdx_parsers_have_filename_bindings_without_local_paths(self):
+        for name in ('LDOCE5.py', 'LDOCE6.py', 'TLD.py', 'oaldpe.py', '百词斩图解词典.py'):
+            source = (support.SRC / 'service' / 'dict' / name).read_text(encoding='utf-8')
+            binding = self.binding.source_binding(source)
+            self.assertTrue(binding['file'], name)
+            self.assertEqual(binding['title'], '')
+            self.assertNotIn('BaiduYunDownload', source)
+
+    def test_filename_only_nested_match_and_legacy_path_priority(self):
+        old = self.root / 'old' / 'Oxford.mdx'
+        current = self.root / 'new' / '1' / '2' / 'Oxford.mdx'
+        mdx(old, 'Old title')
+        mdx(current, 'New title')
+        with self.binding.use_catalogue(self.binding.Catalogue([self.root / 'new'])):
+            self.assertEqual(self.binding.resolve_dictionary('Oxford.mdx', legacy_path=str(old)), str(current.resolve()))
+        with self.binding.use_catalogue(self.binding.Catalogue([])):
+            self.assertEqual(self.binding.resolve_dictionary('Oxford', legacy_path=str(old)), str(old.resolve()))
+        self.assertEqual(self.binding.source_binding("DICT_FILE='Oxford.mdx'"), {'file': 'Oxford', 'title': ''})
+
     def setUp(self):
         self.host = support.RefactorTests()
         self.host.setUp()
@@ -50,7 +69,7 @@ class PortableScriptTests(unittest.TestCase):
         mdx(path, 'Oxford')
         source = "DICT_PATH = " + repr(str(path)) + "\nclass Original: pass\n"
         result = self.binding.portable_source(source)
-        self.assertNotIn(str(self.root), result)
+        self.assertEqual(result, source)  # Legacy path constants remain usable.
         self.assertIn('class Original', result)
         self.assertEqual(result, self.binding.portable_source(result))
 
@@ -66,7 +85,7 @@ class PortableScriptTests(unittest.TestCase):
         self.assertIsNone(remote)
         self.assertEqual(self.backup.read_backup(), local)
         with zipfile.ZipFile(self.backup.backup_path()) as archive:
-            self.assertEqual(archive.namelist(), ['one.py'])
+            self.assertEqual(set(archive.namelist()), {'manifest.json', 'settings.json', 'scripts/one.py'})
 
     def test_unicode_script_names_are_included(self):
         (self.scripts / '百词斩.py').write_text('value=1', encoding='utf-8')

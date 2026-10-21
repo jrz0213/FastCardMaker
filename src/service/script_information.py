@@ -48,6 +48,9 @@ def compact_history(records):
     """Send every conversation turn verbatim, without recursively repeating attachments."""
     messages = []
     for record in records:
+        if record.get('kind') == 'context':
+            messages.append({'role': 'user', 'content': 'Imported conversation (reference only):\n' + str(record.get('content', ''))})
+            continue
         if record.get('kind', 'request') != 'request' or not record.get('response'):
             continue
         user = str(record.get('user_message') or record.get('request', {}).get('user_command', ''))

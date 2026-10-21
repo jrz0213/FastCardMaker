@@ -10,12 +10,72 @@ import test_modularization as support
 
 
 class ConfigSyncTests(unittest.TestCase):
+    def test_manual_mode_never_writes_media_until_explicit_export(self):
+        backup = self.host.load('utils.backup_store')
+        self.config.update({'backup_mode': 'manual', 'dicts': {'test': {'enabled': True}}})
+        self.assertFalse(self.media.exists())
+        self.assertFalse(backup.archive_path().exists())
+        store = self.host.load('service.ai_store')
+        store.config = self.config
+        profile = {'id': 'demo', 'name': 'Demo', 'model': 'test'}
+        store.write_settings({'profiles': [profile], 'keys': {'demo': 'test-key'}})
+        self.assertFalse(backup.archive_path().exists())
+        scripts = self.host.load('service.script_backup')
+        self.assertTrue(scripts.auto_publish())
+        self.assertFalse(backup.archive_path().exists())
+        target = self.media.parent / 'manual.zip'
+        backup.write_bundle(target, settings=self.storage.portable(self.config.data), scripts={'local.py': {'source': 'x=1'}})
+        self.assertTrue(target.exists())
+        self.assertEqual(backup.read_bundle(target)['settings']['credential_backup']['demo'], 'test-key')
+        self.assertFalse(backup.archive_path().exists())
+        self.config.update({'backup_mode': 'auto'})
+        self.assertTrue(backup.archive_path().exists())
+
+    def test_general_json_excludes_connections_and_fields_and_archive_preserves_scripts(self):
+        backup = self.host.load('utils.backup_store')
+        self.config.update({'ui_language': 'en', '123': [], 'ai_settings': {'profiles': []}})
+        basic = json.loads(self.media.read_text())
+        self.assertEqual(basic['ui_language'], 'en')
+        self.assertNotIn('ai_settings', basic)
+        self.assertNotIn('123', basic)
+        backup.write_bundle(scripts={'保留.py': {'source': 'value=1'}})
+        self.config.update({'ui_language': 'ja'})
+        self.assertIn('保留.py', backup.read_bundle()['scripts'])
+        self.assertIn('123', backup.read_bundle()['settings'])
+
+    def test_creating_settings_archive_does_not_mean_empty_script_backup(self):
+        backup = self.host.load('utils.backup_store')
+        self.config.update({'dicts': {}})
+        self.assertFalse(backup.read_bundle()['initialized'])
+        scripts = self.host.load('service.script_backup')
+        self.assertIsNone(scripts.read_backup())
+        folder = self.host.load('service.script_library').script_directory()
+        folder.mkdir(parents=True, exist_ok=True)
+        (folder / 'bundled.py').write_text('value=1')
+        self.assertTrue(scripts.auto_publish())
+        self.assertTrue(backup.read_bundle()['initialized'])
+        self.assertIn('bundled.py', scripts.read_backup())
+
+    def test_import_without_key_keeps_local_key_and_supplied_key_can_replace_it(self):
+        store = self.host.load('service.ai_store')
+        store.config = self.config
+        profile = {'id': 'demo', 'name': 'Demo', 'model': 'test', 'base_url': 'https://example.test/responses'}
+        store.write_settings({'profiles': [profile], 'keys': {'demo': 'old-test-key'}})
+        self.config.import_settings({'ai_settings': {'profiles': [profile]}})
+        self.assertEqual(store.read_settings()['keys']['demo'], 'old-test-key')
+        self.config.import_settings({'ai_settings': {'profiles': [profile]}, 'credential_backup': {'demo': 'new-test-key'}})
+        self.assertEqual(store.read_settings()['keys']['demo'], 'new-test-key')
+
+    def test_imported_legacy_configuration_uses_first_star(self):
+        self.config.import_settings({'123': {'list': [{'name': 'First', 'fields': []}], 'auto': -1}})
+        self.assertEqual(self.config.get_maps(123)['auto'], 0)
+
     def test_key_backup_defaults_on_can_restore_and_can_be_disabled(self):
         store = self.host.load('service.ai_store')
         store.config = self.config
         profile = {'id': 'demo', 'name': 'Demo', 'model': 'test', 'base_url': 'https://example.test/responses'}
         store.write_settings({'profiles': [profile], 'keys': {'demo': 'test-only-secret'}})
-        self.assertEqual(json.loads(self.media.read_text())['credential_backup'], {'demo': 'test-only-secret'})
+        self.assertEqual(self.config.shared_settings()['credential_backup'], {'demo': 'test-only-secret'})
         store.settings_path().unlink()
         self.assertEqual(store.read_settings()['keys']['demo'], 'test-only-secret')
         self.config.update({'backup_api_keys': False, 'credential_backup': {}})
@@ -31,13 +91,13 @@ class ConfigSyncTests(unittest.TestCase):
         self.assertEqual(reopened.thread_number, 7)
         reopened.update({'thread_number': 8})
         self.assertEqual(legacy.read_bytes(), before)
-        self.assertEqual(json.loads(self.media.read_text())['thread_number'], 8)
+        self.assertEqual(self.config.shared_settings()['thread_number'], 8)
         self.assertEqual(self.context.Config(self.host.mw).thread_number, 8)
 
     def test_note_type_ids_from_browser_menu_are_normalized_to_json_keys(self):
         self.config.update({123: []})
         self.assertEqual(self.config.get_maps(123), [])
-        self.assertIn('123', json.loads(self.media.read_text()))
+        self.assertIn('123', self.config.shared_settings())
         self.assertEqual(self.config.settings_difference(), [])
 
     def setUp(self):
@@ -57,7 +117,7 @@ class ConfigSyncTests(unittest.TestCase):
         self.storage = self.host.load('utils.config_storage')
 
     def write_media(self, data):
-        self.storage.atomic_write(self.media, data)
+        self.host.load('utils.backup_store').save_shared(self.media, self.storage.portable(data))
 
     def test_first_read_creates_nothing_and_save_separates_paths(self):
         self.assertFalse(self.media.exists())
@@ -65,7 +125,7 @@ class ConfigSyncTests(unittest.TestCase):
         self.config.update({'dirs': ['C:/dictionaries'], 'last_folder': 'C:/private',
                             'dicts': {'sample': {'enabled': True, 'dict_path': 'C:/dictionaries/a.mdx'}},
                             'ai_markdown': True})
-        shared = json.loads(self.media.read_text())
+        shared = self.config.shared_settings()
         self.assertNotIn('dirs', shared)
         self.assertNotIn('last_folder', shared)
         self.assertNotIn('dict_path', shared['dicts']['sample'])
@@ -108,8 +168,8 @@ class ConfigSyncTests(unittest.TestCase):
         self.config.update({'ai_markdown': True, 'dirs': ['local']})
         self.write_media({'ai_markdown': False})
         self.config.resolve_settings('overwrite')
-        self.assertTrue(json.loads(self.media.read_text())['ai_markdown'])
-        self.assertNotIn('dirs', json.loads(self.media.read_text()))
+        self.assertTrue(self.config.shared_settings()['ai_markdown'])
+        self.assertNotIn('dirs', self.config.shared_settings())
         self.assertFalse(json.loads(self.config.local_path.with_suffix('.previous.json').read_text())['settings']['ai_markdown'])
         self.assertEqual(self.config.settings_difference(), [])
 
@@ -146,8 +206,8 @@ class ConfigSyncTests(unittest.TestCase):
         store.config = self.config
         profile = {'id': 'demo', 'name': 'Demo', 'model': 'test'}
         store.write_settings({'profiles': [profile], 'keys': {'demo': 'local-secret'}, 'requests_per_minute': 30})
-        self.assertEqual(json.loads(self.media.read_text())['credential_backup']['demo'], 'local-secret')
-        self.assertEqual(json.loads(self.media.read_text())['ai_settings']['profiles'], [profile])
+        self.assertEqual(self.config.shared_settings()['credential_backup']['demo'], 'local-secret')
+        self.assertEqual(self.config.shared_settings()['ai_settings']['profiles'], [profile])
         self.assertTrue(store.settings_path().is_relative_to(Path(self.host.mw.pm.profileFolder())))
         self.write_media({'ai_settings': {'profiles': [dict(profile, name='Remote')], 'requests_per_minute': 15}})
         self.config.resolve_settings('sync')
@@ -195,4 +255,4 @@ class ConfigSyncTests(unittest.TestCase):
         self.assertEqual(legacy.read_bytes(), original)
         self.assertTrue(store.settings_path().exists())
         fresh.resolve_settings('overwrite')
-        self.assertEqual(json.loads(self.media.read_text())['credential_backup']['demo'], 'legacy-secret')
+        self.assertEqual(self.config.shared_settings()['credential_backup']['demo'], 'legacy-secret')

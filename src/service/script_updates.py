@@ -185,6 +185,16 @@ def update_source(source, rules, class_name=None):
                         exports[label] = method
     lines = source.splitlines(keepends=True)
     changes, additions, replaced = [], [], set()
+    if 'media' in rules:
+        from .media_rules import validate_media
+        validate_media(rules['media'])
+        assignment = ' ' * (cls.col_offset + 4) + '__media_rules__ = ' + repr(rules['media']) + '\n'
+        previous = [node for node in cls.body if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == '__media_rules__' for t in node.targets)]
+        if previous:
+            changes.append((previous[0].lineno - 1, previous[0].end_lineno, assignment))
+        else:
+            additions.append('\n' + assignment)
     known = {node.name for node in cls.body if isinstance(node, ast.FunctionDef)}
     for index, rule in enumerate(rules['fields']):
         method = exports.get(rule['name'])

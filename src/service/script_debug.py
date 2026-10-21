@@ -94,6 +94,21 @@ def _debug_exports(service, result, cancelled=None, class_name=None):
         instance = copy(service)
         instance.media_dir, instance._media_saved, instance._media_writing = temporary, {}, set()
         instance.missed_css = set()
+        if rules.get('media'):
+            from .mdx_media import MdxMediaMixin
+            instance.__media_rules__ = rules['media']
+            for sample in result['samples']:
+                row = {'word': sample['word'], 'field': 'media', 'passed': False}
+                try:
+                    row['result'] = MdxMediaMixin.adapt_to_anki(instance, sample['html'])
+                    missing = _missing_media(row['result'], temporary)
+                    if missing:
+                        raise FileNotFoundError('Missing repaired media: ' + ', '.join(missing))
+                    row['passed'] = True
+                except Exception as error:
+                    row.update(error=str(error), error_type=type(error).__name__, traceback=traceback.format_exc())
+                    report['passed'] = False
+                report['rows'].append(row)
         for sample in result['samples']:
             for rule in rules['fields']:
                 if cancelled and cancelled():
@@ -135,10 +150,60 @@ def _debug_exports(service, result, cancelled=None, class_name=None):
 
 def debug_exports(service, result, cancelled=None, class_name=None):
     try:
+        if result.get('format') == 'python':
+            return _debug_python(service, result, cancelled)
         return _debug_exports(service, result, cancelled, class_name)
     except Exception as error:
         return {'id': uuid.uuid4().hex, 'kind': 'debug', 'time': datetime.now(timezone.utc).isoformat(),
                 'dictionary_id': dictionary_identity(service.dict_path), 'passed': False,
                 'source_sha256': sha256(result.get('source', '').encode()).hexdigest(),
-                'scope': 'generated_exports_only', 'error_type': type(error).__name__,
+                'scope': 'complete_python_script' if result.get('format') == 'python' else 'generated_exports_only', 'error_type': type(error).__name__,
                 'error': str(error), 'traceback': traceback.format_exc()}
+
+
+def _debug_python(service, result, cancelled=None):
+    """Explicit user-requested execution of a complete script. This is not a sandbox."""
+    from .python_scripts import parse_python
+    from .dictionary_binding import Catalogue, use_catalogue
+    source, name = parse_python(result['source'], result.get('class_name'))
+    report = {'id': uuid.uuid4().hex, 'kind': 'debug', 'time': datetime.now(timezone.utc).isoformat(),
+              'dictionary_id': dictionary_identity(service.dict_path),
+              'source_sha256': sha256(source.encode()).hexdigest(), 'scope': 'complete_python_script',
+              'original_initialization': 'executed', 'rows': [], 'files': [], 'passed': True, 'cancelled': False}
+    started = time.monotonic()
+    namespace = {'__name__': __package__ + '.dict._fastcm_debug', '__package__': __package__ + '.dict'}
+    with tempfile.TemporaryDirectory(prefix='fastcm-python-debug-') as temporary:
+        with use_catalogue(Catalogue([str(Path(service.dict_path).parent)])):
+            if cancelled and cancelled():
+                report.update(cancelled=True, passed=False)
+                return report
+            exec(compile(source, '<AI dictionary debug>', 'exec'), namespace)
+            instance = namespace[name]()
+        instance.dict_path, instance.builder = service.dict_path, service.builder
+        instance.media_dir, instance._media_saved, instance._media_writing = temporary, {}, set()
+        instance.missed_css = set()
+        for sample in result['samples']:
+            instance.word = sample['word']
+            for label, action in instance.exporters:
+                if cancelled and cancelled():
+                    report.update(cancelled=True, passed=False)
+                    return report
+                row = {'word': sample['word'], 'field': label, 'passed': False}
+                try:
+                    value = action()
+                    value = getattr(value, 'result', value)
+                    row['result'] = str(value)
+                    missing = _missing_media(row['result'], temporary)
+                    if missing:
+                        raise FileNotFoundError('Missing media: ' + ', '.join(missing))
+                    row['passed'] = True
+                except Exception as error:
+                    row.update(error=str(error), error_type=type(error).__name__, traceback=traceback.format_exc())
+                    report['passed'] = False
+                report['rows'].append(row)
+        for path in sorted(Path(temporary).rglob('*')):
+            if path.is_file():
+                report['files'].append({'name': str(path.relative_to(temporary)), 'bytes': path.stat().st_size,
+                                        'sha256': sha256(path.read_bytes()).hexdigest()})
+    report['elapsed_seconds'] = round(time.monotonic() - started, 3)
+    return report

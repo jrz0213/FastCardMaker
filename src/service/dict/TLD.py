@@ -8,8 +8,6 @@ from ..dictionary_binding import resolve_dictionary
 DICT_FILE = 'TLD'
 DICT_TITLE = ''
 DICT_PATH = resolve_dictionary(DICT_FILE, DICT_TITLE)
-# u'E:\\BaiduYunDownload\\mdx\\L6mp3.mdx'
-# r开头，windows下直接复制路径粘贴到引号内即可。
 
 @register([u'本地词典-The Little Dict', u'The Little Dict'])
 class TLD(MdxService):

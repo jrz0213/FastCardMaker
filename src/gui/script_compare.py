@@ -112,6 +112,9 @@ class ScriptCompareDialog(Dialog):
 
 
 def check_scripts(parent):
+    from ..utils.backup_store import automatic
+    if not automatic():
+        return True
     try:
         local, remote = storage.observe()
         if remote is None or local == remote:

@@ -163,6 +163,7 @@ Click **AI parse** beside the dictionary:
 2. Keep the three default samples or enter three different words from the dictionary.
 3. Describe the output in **Command**, for example “Extract meanings, phonetics and pronunciation separately; check whether JS changes audio paths.”
 4. Select **Send HTML**, **Send JS** and **Send original script** as needed. Send HTML and JS for audio-path repairs; include the original script when revising one.
+   **Return JSON rules** is checked by default: the add-on turns rules into Python for standard extraction. Uncheck it for complete Python, allowing complex logic and nested HTML restructuring. Initial and follow-up instructions both follow this selection. Click **?** for help.
 5. Click **Send three entries and generate**, inspect the extraction preview and generated script, then click **Save script**.
 6. Enable the dictionary in Dictionary manager, then select its data items in Options and save.
 
@@ -170,16 +171,17 @@ Click **AI parse** beside the dictionary:
 
 ### 3. Debug and continue the conversation
 
-Enable **Auto debug** before generation or click **Debug once** afterward. Read results in **Information history**; expand failures to inspect the word, field and error. Debugging does not change cards and covers only the generated export methods and three samples. Test a few notes after saving.
+Click **Debug** after generation to check three samples and read errors in **Information history**. JSON mode checks template-generated methods. Direct Python output receives syntax and structure checks only until you review the source and click Debug, which executes the complete script and its exports. Complete Python can access files and the network, so passing syntax checks does not guarantee safety or correctness. Test a few notes after saving.
 
 ![Conversation roles and the input below](images/user-guide/en-script-information.png)
 
 - Enter a follow-up in the input below and click **Send message**, such as “Fix audio paths using the debug errors and keep the other fields.”
-- Select **Include all conversation turns** for context and **Include latest debug result** for error-based repairs.
-- Messages initially show up to five lines. Use **Expand / Collapse** to read them. Use **Copy all** or **Export Markdown** to share full records.
-- After an AI revision, inspect the preview and **Save script** again. Use **Restore old script** to undo a script change; recycled backups are kept for seven days.
+- **Include all messages** is selected by default. Choose **Include checked messages** to send only messages selected on the right, including individual debug reports. New messages start unchecked; no checked messages means no history is sent.
+- Messages show timestamps and up to five lines. **Expand / Collapse** appears after the message. Select messages with the checkboxes on the right, then **Copy selected content**, or use **Copy all / Export Markdown**.
+- **Import conversation** reads a TXT or Markdown file as context; use Include all messages, or check the imported message and use Include checked messages. Conversations are not saved automatically, so export before closing if needed.
+- After an AI revision, inspect the preview and **Save script** again. **Restore old script** lists versions by name and deletion time, with **Restore** and read-only **Open**. Versions are kept for seven days. Close the window using × at the top right.
 
-History and source attachments increase token usage and may exceed the model limit. If needed, disable history or start a new session. 
+History and source attachments increase token usage and may exceed the model limit. If needed, include only a few checked messages or start a new session.
 
 
 ## Common tasks and fixes
@@ -194,16 +196,20 @@ History and source attachments increase token usage and may exceed the model lim
 
 ### Script backup and recovery
 
-Bundled, imported and AI-generated Python dictionary parsers are backed up to `_fastcm_scripts.zip` in the media folder and sync with Anki media. Runtime copies live in `fastcm/scripts` within the current Anki profile. Dictionary JavaScript stays with the dictionary; select Send JS when AI analysis needs it. Folder scans no longer import adjacent Python files. Use **Dictionary manager → Import script** instead.
+Choose **Automatic backup** or **Manual backup** under **Plugin settings → General settings → Configuration backup**. Automatic mode saves AI connections, field mappings and Python dictionary parsers together in `_fastcm_backup.zip`, which syncs with Anki media. Legacy script backups remain readable. Manual mode keeps edits local; use **Import ZIP / Export ZIP** explicitly, with the media folder as the default location.
+
+Runtime Python copies live in `fastcm/scripts` within the current Anki profile. Dictionary JavaScript stays with the dictionary; select Send JS when AI analysis needs it. Folder scans no longer import adjacent Python files. Use **Dictionary manager → Import script** instead.
 
 Opening Options checks script content fingerprints. If versions differ, entering dictionary or AI settings shows a file chooser with **Local version / Backup version**, defaulting to Backup. Header checkboxes select an entire side; individual rows can then be changed. Each side shows its size and **Open**, which displays read-only source inside the add-on without executing it. Selecting a missing side deletes the file, with confirmation. If no ZIP exists, current scripts create the first backup. Matching copies update automatically when a script is saved; differing copies require a choice.
 
-Parsers identify MDX files by filename stem and internal title, rather than absolute paths. Re-add a moved dictionary folder and rescan. Multiple matching files require you to adjust imported folders; the first match is never silently chosen. Removing a folder preserves scripts and field mappings.
+New parsers prefer MDX filenames, with an optional internal title, and search subfolders recursively. Legacy paths and existing audio logic remain supported; filename matching takes precedence when both bindings exist. Multiple matches require you to adjust imported folders; the first match is never silently chosen. Removing a folder preserves scripts and mappings. Missing items show “Unavailable” and are skipped during queries.
 
 ![Choose local or backup scripts](images/user-guide/en-script-comparison.png)
 
 ### Saving settings and API keys
 
-Settings keep an opening snapshot in memory. Closing, Cancel or Esc exits immediately if values match; otherwise choose **Save / Discard / Cancel**. Changing a value back does not count as an edit. FastCard Maker settings take precedence; when absent, legacy FastWQ settings are read. Subsequent saves write `_fastcmcfg.json`, preserving the old file.
+Settings keep an opening snapshot in memory. Closing, Cancel or Esc exits immediately if values match; otherwise choose **Save / Discard / Cancel**. Changing a value back does not count as an edit. FastCard Maker settings take precedence; when absent, legacy FastWQ settings are read without overwriting the old file. `_fastcmcfg.json` keeps basic preferences; the unified backup holds AI connections, field mappings and scripts. Dictionary paths stay local. Switching AI connections preserves your field prompt. The first configuration is starred by default; deleting the starred configuration selects the first remaining one.
 
-**Plugin settings → General settings → Include API keys in backup** is enabled by default. Keys are stored as plaintext in the shared JSON and sync with media. Disable it to remove keys from shared settings while retaining local credentials. Restored connections without a key display “Missing API Key”; enter the key to use them. AI chat and debug messages remain in the current window only and are not automatically saved to disk or included in the ZIP.
+**Configuration backup → Include API keys in backup (plaintext)** is enabled by default. Keys are stored in settings inside the ZIP and sync with media in automatic mode. Disable it to omit keys from backups while retaining local credentials. Importing a backup without keys does not clear existing local keys. Connections without a usable key display “Missing API Key”. Chat and debug messages stay in the current window only and are not automatically saved or included in the ZIP.
+
+![Scheduled generation and backup controls](images/user-guide/en-general-settings.png)

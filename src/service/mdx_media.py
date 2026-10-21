@@ -138,6 +138,10 @@ class MdxMediaMixin:
         return getattr(config, 'fuzzy_match', True)
 
     def adapt_to_anki(self, html):
+        media_rules = getattr(self, '__media_rules__', None)
+        if isinstance(media_rules, list) and media_rules:
+            from .media_rules import repair_media
+            html = repair_media(html, media_rules, self.builder, self.dict_path)
         attribute = re.compile(r"\b(src|href)\s*=\s*(['\"])(.*?)\2", re.I)
         resources, fuzzy_candidates = set(), set()
         for match in attribute.finditer(html):

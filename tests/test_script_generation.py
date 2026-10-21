@@ -23,6 +23,176 @@ import test_modularization as support
 
 @unittest.skipUnless(real_soup and importlib.util.find_spec('PyQt6'), 'Qt/BeautifulSoup not installed')
 class ScriptGenerationTests(unittest.TestCase):
+    def test_python_response_is_checked_without_execution_and_prompts_follow_mode(self):
+        module = self.host.load('gui.script_generator')
+        base = self.host.load('service.base')
+        source = '''from ..base import MdxService, register, export
+raise RuntimeError('must not run during generation')
+@register(['Example', 'Example'])
+class Example(MdxService):
+    @export(['Nested', 'Nested'])
+    def nested(self):
+        return '<section><ul><li>Nested content</li></ul></section>'
+'''
+        fake = types.SimpleNamespace(support=True, builder=self.builder)
+        for message in ('', 'Please revise the nested structure'):
+            with patch.object(base, 'MdxService', return_value=fake), patch.object(module, 'request_ai_text', return_value='```python\n' + source + '```') as request:
+                with patch.object(module, 'debug_exports', side_effect=AssertionError('must not auto execute')):
+                    result = module.Generation('sample.mdx', 'ai:test', [], None, 'Extract', message=message,
+                                               debug=True, return_json=False).load_services()
+            self.assertNotIn('error', result, result)
+            self.assertEqual(result['format'], 'python')
+            self.assertEqual(result['source'], source)
+            self.assertEqual(request.call_args.args[2], module.PYTHON_INSTRUCTIONS)
+            self.assertNotIn('debug_record', result)
+        with patch.object(base, 'MdxService', return_value=fake), patch.object(module, 'request_ai_text', return_value=json.dumps(self.rules)) as request:
+            module.Generation('sample.mdx', 'ai:test', [], self.names, return_json=True).load_services()
+        self.assertEqual(request.call_args.args[2], module.INSTRUCTIONS)
+
+    def test_python_mode_checkbox_disables_automatic_execution(self):
+        module = self.host.load('gui.script_generator')
+        dialog = module.ScriptGeneratorDialog(None, 'sample.mdx')
+        self.host.widgets.append(dialog)
+        self.assertTrue(dialog.return_json.isChecked())
+        dialog.return_json.setChecked(False)
+        self.assertFalse(hasattr(dialog, 'auto_debug'))
+        self.assertFalse(hasattr(dialog, 'cancel_button'))
+        self.assertEqual(dialog.debug_button.text(), '调试')
+        dialog.return_json.setChecked(True)
+        self.assertTrue(dialog.return_json.isChecked())
+
+    def test_import_text_selection_and_recycle_list(self):
+        module = self.host.load('gui.script_generator')
+        dialog = module.ScriptGeneratorDialog(None, 'sample.mdx')
+        self.host.widgets.append(dialog)
+        path = Path(self.temp.name) / 'conversation.md'
+        content = 'User: previous question\nAI: complete previous reply\n<script>not executable</script>'
+        path.write_text(content, encoding='utf-8')
+        with patch.object(module.QFileDialog, 'getOpenFileName', return_value=(str(path), '')):
+            dialog.import_conversation()
+        self.assertIn(content, dialog.conversation.toPlainText())
+        self.assertIn(content, module.compact_history(dialog.conversations)[0]['content'])
+        self.assertIn(datetime.now().strftime('%Y-%m-%d'), dialog.conversation.toPlainText())
+        dialog.toggle_message(module.QUrl('select:0-user'))
+        dialog.copy_selected_information()
+        self.assertIn(content, self.host.app.clipboard().text())
+        updates = self.host.load('service.script_updates')
+        source = Path(self.temp.name) / 'example.py'
+        source.write_text('x = 1', encoding='utf-8')
+        updates.recycle_script(source, self.temp.name)
+        recycle = self.host.load('gui.script_recycle').ScriptRecycleDialog(dialog, self.temp.name)
+        self.host.widgets.append(recycle)
+        self.assertEqual(recycle.files.count(), 1)
+        self.assertIn('example.py', recycle.files.item(0).text())
+        self.assertIn(datetime.now().strftime('%Y-%m-%d'), recycle.files.item(0).text())
+        self.assertTrue(recycle.open_button.isEnabled())
+        recycle.accept()
+        restored = updates.restore_script(recycle.selected_path, self.temp.name)
+        self.assertEqual(Path(restored).read_text(encoding='utf-8'), 'x = 1')
+
+    def test_history_all_or_selected_defaults_and_new_messages_are_unchecked(self):
+        module = self.host.load('gui.script_generator')
+        dialog = module.ScriptGeneratorDialog(None, 'sample.mdx')
+        self.host.widgets.append(dialog)
+        dialog.add_information({'kind': 'request', 'user_message': 'question',
+                                'request': {'html': 'attachment not repeated'}, 'response': 'answer'})
+        self.assertTrue(dialog.send_history.isChecked())
+        self.assertFalse(dialog._selected_messages)
+        self.assertEqual(dialog.selected_history(), [{'role': 'user', 'content': 'question'},
+                                                     {'role': 'assistant', 'content': 'answer'}])
+        dialog.send_selected.setChecked(True)
+        self.assertFalse(dialog.send_history.isChecked())
+        self.assertEqual(dialog.selected_history(), [])
+        dialog.toggle_message(module.QUrl('select:0-assistant'))
+        self.assertEqual(dialog.selected_history(), [{'role': 'assistant', 'content': 'answer'}])
+        dialog.add_information({'kind': 'debug', 'passed': True, 'rows': []})
+        self.assertNotIn('1-debug', dialog._selected_messages)
+        self.assertEqual(dialog.selected_history(), [{'role': 'assistant', 'content': 'answer'}])
+
+    def test_python_structure_validation_rejects_invalid_or_renamed_scripts(self):
+        parser = self.host.load('service.python_scripts')
+        for source in ('{"fields": []}', 'def invalid(:', '@register(["X"])\nclass X(object): pass'):
+            with self.assertRaises((SyntaxError, ValueError)):
+                parser.parse_python(source)
+        with self.assertRaises(ValueError):
+            parser.parse_python('@register(["X"])\nclass New(MdxService): pass', 'Original')
+
+    def test_python_debug_executes_only_when_explicitly_called_and_reports_errors(self):
+        module = self.host.load('service.script_debug')
+        service, result = self.debug_candidate()
+        result.update(format='python', class_name='Example', source='''from ..base import MdxService, register, export
+raise RuntimeError('explicit debug execution')
+@register(['Example'])
+class Example(MdxService): pass
+''')
+        report = module.debug_exports(service, result)
+        self.assertFalse(report['passed'])
+        self.assertEqual(report['error'], 'explicit debug execution')
+        self.assertIn('traceback', report)
+        result['source'] = '''from ..base import MdxService, register, export
+@register(['Example'])
+class Example(MdxService):
+    def __init__(self):
+        from ..core import Service
+        Service.__init__(self)
+    def fld_whole(self):
+        return ''
+    @export(['Nested'])
+    def nested(self):
+        return '<section><ul><li>' + self.word + '</li></ul></section>'
+'''
+        report = module.debug_exports(service, result)
+        self.assertTrue(report['passed'], report)
+        self.assertEqual(report['scope'], 'complete_python_script')
+        self.assertEqual(len(report['rows']), 3)
+        self.assertIn('<section><ul><li>', report['rows'][0]['result'])
+
+    def test_media_only_rules_keep_all_exports_and_legacy_path_code(self):
+        rule = self.audio_rules()['fields'][0]
+        rules = {'fields': [], 'unavailable': [], 'media': [{key: rule[key] for key in ('selector', 'audio', 'limit')}]}
+        self.assertEqual(self.engine.parse_rules(json.dumps(rules), None), rules)
+        updates = self.host.load('service.script_updates')
+        source = '''from ..base import *
+DICT_PATH = r'C:/legacy/sample.mdx'
+@register(['Original'])
+class Original(MdxService):
+    @export(['Meaning'])
+    def meaning(self):
+        return 'keep meaning'
+    @export(['Audio'])
+    def audio(self):
+        return self.old_audio_path()
+'''
+        updated = updates.update_source(source, rules, 'Original')
+        def methods(text):
+            cls = next(node for node in ast.parse(text).body if isinstance(node, ast.ClassDef))
+            return {node.name: ast.dump(node) for node in cls.body if isinstance(node, ast.FunctionDef)}
+        self.assertEqual(methods(source), methods(updated))
+        self.assertIn("DICT_PATH = r'C:/legacy/sample.mdx'", updated)
+        _, adapter = self.engine.render_script('sample.mdx', rules)
+        self.assertNotIn('@export(', adapter)
+        self.assertIn('__media_rules__', adapter)
+
+    def test_optional_media_rule_repairs_audio_without_changing_definition_or_bytes(self):
+        from pathlib import Path
+        root = Path(self.temp.name)
+        (root / 'audio').mkdir()
+        payload = b'original unchanged audio'
+        (root / 'audio' / 'apple-uk.mp3').write_bytes(payload)
+        rule = self.audio_rules()['fields'][0]
+        rules = [{key: rule[key] for key in ('selector', 'audio', 'limit')}]
+        module = self.host.load('service.media_rules')
+        html = '<div class="def">Keep this meaning</div><a class="audio" onclick="playSound(\'apple_uk\')">UK</a>'
+        unchanged = module.repair_media(html, [], self.builder, str(root / 'sample.mdx'))
+        self.assertEqual(unchanged, html)
+        fixed = module.repair_media(html, rules, self.builder, str(root / 'sample.mdx'))
+        self.assertIn('Keep this meaning', fixed)
+        self.assertIn('sound:audio/apple-uk.mp3', fixed)
+        self.assertEqual(module.repair_media(fixed, rules, self.builder, str(root / 'sample.mdx')), fixed)
+        self.assertEqual((root / 'audio' / 'apple-uk.mp3').read_bytes(), payload)
+        no_change = {'fields': [], 'unavailable': [], 'media': []}
+        self.assertEqual(self.engine.parse_rules(json.dumps(no_change), None), no_change)
+
     def setUp(self):
         gui_runtime.GuiRuntimeTests.setUpClass()
         self.host = gui_runtime.GuiRuntimeTests()

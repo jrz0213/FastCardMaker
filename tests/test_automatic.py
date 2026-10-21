@@ -133,7 +133,7 @@ class AutomaticTests(unittest.TestCase):
 
     def test_no_star_has_no_fallback_and_disabled_dictionary_is_skipped(self):
         self.config.get_maps = lambda mid: {'list': [{'fields': self.maps}], 'auto': -1, 'def': 0}
-        self.assertIsNone(self.module.starred_mappings(self.host.model))
+        self.assertIsNotNone(self.module.starred_mappings(self.host.model))
         self.maps[1]['dict_unique'] = 'local'
         self.config.get_maps = lambda mid: {'list': [{'fields': self.maps}], 'auto': 0, 'def': 0}
         self.assertTrue(self.module.starred_mappings(self.host.model)[1]['ignore'])
@@ -150,8 +150,8 @@ class AutomaticTests(unittest.TestCase):
         dialog.save()
         self.assertEqual(self.host.controller.save_config.call_args.args[1]['auto'], 1)
         dialog.removeTab(1)
-        self.assertEqual(dialog.auto_tab_index, -1)
-        self.assertFalse(dialog.tabs[0].auto_star.isChecked())
+        self.assertEqual(dialog.auto_tab_index, 0)
+        self.assertTrue(dialog.tabs[0].auto_star.isChecked())
 
     def test_auto_settings_validate_star_and_save_checkboxes_and_interval(self):
         sys.modules.pop(support.PACKAGE + '.gui.setting', None)
@@ -162,8 +162,8 @@ class AutomaticTests(unittest.TestCase):
         dialog.auto_models.item(0).setCheckState(self.host.qt.Qt.CheckState.Checked)
         self.config.get_maps = lambda mid: {'list': [{'fields': self.maps}], 'auto': -1}
         with patch.object(self.host.qt.QMessageBox, 'warning') as warning:
-            self.assertFalse(dialog.save())
-            warning.assert_called_once()
+            dialog.save()
+            warning.assert_not_called()
         self.config.get_maps = lambda mid: {'list': [{'fields': self.maps}], 'auto': 0}
         dialog.save()
         self.assertEqual(self.config.update.call_args.args[0]['auto_run'],

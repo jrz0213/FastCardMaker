@@ -57,12 +57,28 @@ Return validated JSON rules, never arbitrary Python patches. The plugin preserve
 unrelated original code, replaces matching exported method bodies, and appends new
 exports. Omitted HTML/JS/scripts are flagged in attachments; never invent missing data.
 Rules must take precedence over conflicting output instructions.'''
-INSTRUCTIONS += '''\nDictionary identity is its MDX filename stem plus its internal Title.
+INSTRUCTIONS += '''\nDictionary identity primarily uses its MDX filename stem; internal Title is optional.
 Absolute filesystem paths are local-only and must never be stored in rules or
 generated scripts. The trusted adapter resolves the current path at runtime.
 Treat original script path constants as obsolete reference data, not bindings.
 Selectors and media paths must be relative dictionary resource references;
 never embed this computer's drive, home directory, or Anki media directory.'''
+INSTRUCTIONS += '''\nPrefer filename-only binding (DICT_FILE); internal Title is optional,
+not a mandatory identity check. Let the plugin find files recursively in the user's
+local dictionary folders. Do not couple rules to a machine-specific directory.
+Preserve an original parser's established media-path handling unless the user asks
+to change it. Existing DICT_PATH bindings remain supported as a fallback.
+Path transformation is optional: retain working original paths and do not invent
+conversion steps when the supplied JavaScript shows no transformation.'''
+INSTRUCTIONS += '''\nYou may independently return an optional "media" list alongside fields and unavailable.
+Each media item is {"selector":"CSS selector", "audio":{"attribute":"onclick", "steps":[...]}, "limit":50}.
+Use the same allowed audio steps described above. These repairs apply to original
+entry HTML without creating exported fields or changing text/layout intentionally.
+For a media-only request return fields:[], unavailable:[] and media:[...].
+Decide from the user's request whether to extract fields, repair paths, both, or neither.
+Do not create fields just to repair paths. An empty media list means no transformation;
+omit media entirely when preserving existing media rules. If no changes are needed,
+return fields:[], unavailable:[], media:[]. Preserve working legacy path handling.'''
 
 
 def resolve_entry(builder, word, cancelled=None):
@@ -153,11 +169,14 @@ def parse_rules(text, names):
         return result
     try:
         data = json.loads(text, object_pairs_hook=unique_object)
-        if not isinstance(data, dict) or set(data) != {'fields', 'unavailable'}:
+        if not isinstance(data, dict) or set(data) not in ({'fields', 'unavailable'}, {'fields', 'unavailable', 'media'}):
             raise ValueError()
         fields, unavailable = data['fields'], data['unavailable']
-        if not isinstance(fields, list) or not fields or len(fields) > 12 or not isinstance(unavailable, list):
+        if not isinstance(fields, list) or (not fields and 'media' not in data) or len(fields) > 12 or not isinstance(unavailable, list):
             raise ValueError()
+        if 'media' in data:
+            from .media_rules import validate_media
+            validate_media(data['media'])
         labels = list(unavailable)
         for field in fields:
             if not isinstance(field, dict):
@@ -174,7 +193,7 @@ def parse_rules(text, names):
                 raise ValueError()
             BeautifulSoup('', 'html.parser').select(field['selector'])
             labels.append(field['name'])
-        if (not 1 <= len(labels) <= 12 or any(not isinstance(label, str) or not label.strip() or len(label) > 60 for label in labels)
+        if (not (0 if 'media' in data else 1) <= len(labels) <= 12 or any(not isinstance(label, str) or not label.strip() or len(label) > 60 for label in labels)
                 or len(set(labels)) != len(labels) or names and set(labels) != set(names)):
             raise ValueError()
     except Exception:
@@ -201,6 +220,10 @@ def extract_field(html, rule, builder=None, dict_path=None):
 
 
 def validate_samples(samples, rules, builder=None, dict_path=None):
+    if rules.get('media'):
+        from .media_rules import repair_media
+        for sample in samples:
+            repair_media(sample['html'], rules['media'], builder, dict_path)
     preview = [{'word': sample['word'], 'fields': {
         rule['name']: extract_field(sample['html'], rule, builder, dict_path) for rule in rules['fields']}} for sample in samples]
     if any(not any(has_content(row['fields'][rule['name']], rule) for row in preview) for rule in rules['fields']):
@@ -243,11 +266,13 @@ def render_script(dict_path, rules):
              'from ..selector_scripts import extract_required, resolve_entry, adapt_extracted', 'import json', '',
              'from ..dictionary_binding import resolve_dictionary',
              'DICT_FILE = ' + repr(binding['file']),
-             'DICT_TITLE = ' + repr(binding['title']),
+             'DICT_TITLE = ' + repr(''),
              'RULES = json.loads(' + repr(json.dumps(rules['fields'], ensure_ascii=False)) + ')', '',
              '@register(' + repr([title, title]) + ')', 'class ' + class_name + '(MdxService):',
              '    __keep_default_mdx__ = True',
              '    def __init__(self):', '        super().__init__(resolve_dictionary(DICT_FILE, DICT_TITLE))', '']
+    if 'media' in rules:
+        lines.append('    __media_rules__ = ' + repr(rules['media']))
     for index, rule in enumerate(rules['fields']):
         lines.extend(['    @export(' + repr([rule['name'], rule['name']]) + ')',
                       '    def generated_field_' + str(index) + '(self):',

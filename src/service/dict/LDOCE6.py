@@ -12,7 +12,10 @@ MAPPINGS = [
     ['us', [re.compile(VOICE_PATTERN % r'b'), re.compile(VOICE_PATTERN_WQ % (r'amevoice', r'amevoice'))]]
 ]
 LANG_TO_REGEXPS = {lang: regexps for lang, regexps in MAPPINGS}
-DICT_PATH = u'' # u'E:\\BaiduYunDownload\\mdx\\L6mp3.mdx'
+from ..dictionary_binding import resolve_dictionary
+DICT_FILE = 'L6mp3'
+DICT_TITLE = ''
+DICT_PATH = resolve_dictionary(DICT_FILE, DICT_TITLE)
 
 
 @register([u'本地词典-LDOCE6', u'MDX-LDOCE6'])
@@ -180,4 +183,3 @@ class MDXLdoce6(MdxService):
     @with_styles(cssfile='_ldoce6.css')
     def _css(self, val):
         return val
-    

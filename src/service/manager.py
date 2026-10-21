@@ -184,12 +184,6 @@ class ServiceManager(object):
                     else:
                         source = ''
                 binding = source_binding(source)
-                if binding and not binding.get('title'):
-                    from .dictionary_binding import descriptor
-                    candidates = getattr(self, 'catalogue', None)
-                    candidates = candidates.files.get(binding['file'].casefold(), []) if candidates else []
-                    if len(candidates) == 1 and descriptor(candidates[0])['title']:
-                        source = portable_source(source, candidates[0])
                 # Load profile-specific source without rewriting the shipped scripts.
                 name = __package__ + '.dict.' + os.path.splitext(f)[0]
                 module = types.ModuleType(name) if source else importlib.import_module('.dict.' + os.path.splitext(f)[0], __package__)
@@ -197,6 +191,8 @@ class ServiceManager(object):
                 module.__file__ = str(cached)
                 sys.modules[name] = module
                 exec(compile(source, module.__file__, 'exec'), module.__dict__)
+                if binding:
+                    module.DICT_PATH = resolve_dictionary(binding['file'], binding['title'], getattr(module, 'DICT_PATH', ''))
                 if not cached.exists() or cached.read_text(encoding='utf-8') != source:
                     cached.write_text(source, encoding='utf-8')
                 self.script_library[f] = {'source': source}
@@ -221,7 +217,7 @@ class ServiceManager(object):
                     if binding:
                         service.__binding__ = binding
                         clazz.__dict_binding__ = binding
-                        service.__dict_path__ = resolve_dictionary(binding['file'], binding['title'])
+                        service.__dict_path__ = resolve_dictionary(binding['file'], binding['title'], getattr(module, 'DICT_PATH', ''))
                         if not os.path.isfile(service.__dict_path__):
                             service.__binding_status__ = ('ambiguous' if len(self.catalogue.candidates(binding)) > 1 else 'missing')
                     declared_path = getattr(module, 'DICT_PATH', '')
@@ -245,8 +241,6 @@ class ServiceManager(object):
                                     from .dictionary_binding import descriptor
                                     discovered = descriptor(path)
                                     if discovered['title']:
-                                        source = portable_source(source, path)
-                                        cached.write_text(source, encoding='utf-8')
                                         service.__binding__ = clazz.__dict_binding__ = discovered
                                         service.__source__ = source
                             if instance.support and path and MdxService.check(path):

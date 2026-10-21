@@ -19,6 +19,41 @@ import test_modularization as support
 
 @unittest.skipUnless(importlib.util.find_spec('PyQt6'), 'PyQt6 is not installed')
 class GuiRuntimeTests(unittest.TestCase):
+    def test_ai_prompt_is_independent_of_connection_and_dictionary_selection(self):
+        self.services['ai'] = [{'title': 'First', 'unique': 'ai:first'}, {'title': 'Second', 'unique': 'ai:second'}]
+        dialog = self.dialog()
+        row = dialog.tabs[0]._options[1]
+        prompt = '结合 {{Word}} 回答问题，保持原样。'
+        row['prompt_edit'].setPlainText(prompt)
+        for unique in ('ai:first', 'ai:second', 'online', 'ai:first'):
+            row['dict_combo'].setCurrentIndex(row['dict_combo'].findData(unique))
+            self.assertEqual(row['prompt_edit'].toPlainText(), prompt)
+            self.assertEqual(dialog.tabs[0].data[1]['ai_prompt'], prompt)
+
+    def test_missing_target_mapping_is_preserved_and_not_reassigned_by_position(self):
+        missing = dict(self.maps[1], fld_name='DeletedField', fld_ord=1)
+        self.maps[1] = missing
+        dialog = self.dialog()
+        data = dialog.tabs[0].data
+        self.assertIn(missing, data)
+        self.assertTrue(next(item for item in data if item['fld_name'] == 'Meaning')['ignore'])
+
+    def test_backup_mode_controls_and_disabled_schedule_are_compact(self):
+        self.background_host()
+        sys.modules.pop(support.PACKAGE + '.gui.setting', None)
+        dialog = self.load('gui.setting').SettingDialog(None)
+        self.widgets.append(dialog)
+        self.assertTrue(dialog.auto_panel.isHidden())
+        self.assertTrue(dialog.backup_manual.isHidden())
+        self.assertTrue(dialog.backup_api_keys.isChecked())
+        self.load('gui.backup_controls').choose_mode(dialog, 'manual')
+        self.assertFalse(dialog.backup_manual.isHidden())
+        self.assertNotEqual(dialog.widget_values(), dialog._initial_values)
+        self.load('gui.backup_controls').choose_mode(dialog, 'auto')
+        self.assertEqual(dialog.widget_values(), dialog._initial_values)
+        dialog.auto_enabled.setChecked(True)
+        self.assertFalse(dialog.auto_panel.isHidden())
+
     def test_about_content_is_localized_and_uses_current_project_links(self):
         sys.modules.pop(support.PACKAGE + '.constants', None)
         constants = self.load('constants')
@@ -1414,7 +1449,7 @@ class GuiRuntimeTests(unittest.TestCase):
         row['selected_mapping'].update(dict_fld_name='Removed', dict_fld_ord=99)
         with self.qt.QSignalBlocker(row['field_combo']):
             tab.fill_field_combo_options(row['field_combo'], 'Local', 'local', 'Removed', 99)
-        self.assertIn('⚠', row['field_combo'].currentText())
+        self.assertEqual(row['field_combo'].currentText(), '不可用')
         self.assertEqual(tab.data[1]['dict_fld_ord'], 99)
         row['field_combo'].setCurrentIndex(0)
         self.assertEqual(tab.data[1]['dict_fld_ord'], 0)
@@ -2188,9 +2223,9 @@ class GuiRuntimeTests(unittest.TestCase):
         dialog = self.dialog()
         row = dialog.tabs[0]._options[1]
         self.assertEqual(row['dict_combo'].currentData(), 'broken')
-        self.assertEqual(row['field_combo'].currentData(), 4)
-        self.assertIn('Custom field', row['field_combo'].currentText())
-        self.assertIn('⚠', row['field_combo'].currentText())
+        self.assertEqual(row['field_combo'].currentData(), -1)
+        self.assertEqual(row['field_combo'].currentText(), '不可用')
+        self.assertEqual(row['field_combo'].currentText(), '不可用')
         self.assertFalse(row['ignore_check_btn'].isChecked())
         self.assertEqual(dialog.tabs[0].data[1]['dict_unique'], 'broken')
         self.assertFalse(dialog._is_dirty)

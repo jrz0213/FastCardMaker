@@ -209,7 +209,7 @@ class StabilityTests(unittest.TestCase):
                 generation = config.generation
                 os.chdir(b)
                 config.update({'test': 'A-only'})
-                self.assertEqual(json.loads((a / 'collection.media' / '_fastcmcfg.json').read_text())['test'], 'A-only')
+                self.assertEqual(self.load('utils.backup_store').shared_configuration(a / 'collection.media' / '_fastcmcfg.json')['test'], 'A-only')
                 self.assertNotIn('test', json.loads((a / 'collection.media' / '_fastwqcfg.json').read_text()))
                 window.pm.name = 'B'
                 window.pm.profileFolder = lambda: str(b)

@@ -80,7 +80,10 @@ class Config(object):
         except (OSError, ValueError):
             shared = None
         expected_hash = fingerprint(shared) if shared is not None else None
-        publish = not self._sync_paused and expected_hash is not None and expected_hash == self._local_shared_hash
+        switching_to_auto = self.data.get('backup_mode') == 'manual' and updated.get('backup_mode') == 'auto'
+        publish = (updated.get('backup_mode', 'auto') != 'manual' and not self._sync_paused
+                   and expected_hash is not None and (expected_hash == self._local_shared_hash or
+                   switching_to_auto and expected_hash == self._shared_hash))
         target_hash = fingerprint(updated) if publish else self._shared_hash
         self._write_local(updated, self._shared_hash)
         self.data = updated
@@ -90,7 +93,7 @@ class Config(object):
                 latest = self._read_shared()
                 if fingerprint(latest) == expected_hash:
                     if latest != portable(updated):
-                        atomic_write(self.path, portable(updated))
+                        self._write_shared(updated)
                     self._shared_hash = target_hash
                     self._write_local(updated, target_hash)
             except (OSError, ValueError):
@@ -109,16 +112,24 @@ class Config(object):
     def shared_settings(self):
         return portable(validate_settings(self._read_shared()))
 
+    def _write_shared(self, settings):
+        from .utils.backup_store import save_shared
+        save_shared(self.path, portable(settings))
+
     def _read_shared(self):
         if os.path.exists(self.path):
-            return read_object(self.path)
+            from .utils.backup_store import shared_configuration
+            return shared_configuration(self.path)
         for name in ('_fastcmcfg.json', '.fastcmcfg.json', '_fastwqcfg.json', '.fastwqcfg.json'):
             path = os.path.join(self.media_dir, name)
             if os.path.exists(path):
                 return read_object(path)
-        return {}
+        from .utils.backup_store import shared_configuration
+        return shared_configuration(self.path)
 
     def settings_difference(self):
+        if self.data.get('backup_mode', 'auto') == 'manual':
+            return []
         remote, local = self.shared_settings(), portable(self.data)
         differences = sorted(key for key in set(remote) | set(local)
                              if key not in remote or key not in local or remote[key] != local[key])
@@ -139,7 +150,7 @@ class Config(object):
                      {'format': 'fastcm-local', 'settings': remote if action == 'overwrite' else self.data,
                       'shared_hash': self._shared_hash})
         if action == 'overwrite':
-            atomic_write(self.path, portable(updated))
+            self._write_shared(updated)
         self._shared_hash = fingerprint(updated)
         self._write_local(updated, self._shared_hash)
         self.data = updated
@@ -150,6 +161,7 @@ class Config(object):
     def import_settings(self, settings):
         incoming = portable(validate_settings(settings, importing=True))
         updated = restore_portable(incoming, self.data)
+        self._normalize_stars(updated)
         atomic_write(self.local_path.with_suffix('.previous.json'),
                      {'format': 'fastcm-local', 'settings': self.data, 'shared_hash': self._shared_hash})
         self._write_local(updated, self._shared_hash)
@@ -174,7 +186,7 @@ class Config(object):
             if local:
                 loaded = {}  # A bad remote file must not prevent local startup.
             else:
-                loaded = read_object(path)
+                loaded = self._read_shared()
             if not isinstance(loaded, dict):
                 raise ValueError('Invalid FastCard Maker configuration')
         except FileNotFoundError:
@@ -203,6 +215,18 @@ class Config(object):
         # Read older names, but keep them intact. The next explicit save writes
         # the new name atomically and it then takes precedence.
         return self.data
+
+    @staticmethod
+    def _normalize_stars(data):
+        for mid, value in data.items():
+            if not mid.isdigit() or not isinstance(value, dict):
+                continue
+            choices = value.get('list', [])
+            star = value.get('auto', 0)
+            if choices and (type(star) is not int or not 0 <= star < len(choices)):
+                value['auto'] = 0
+            elif choices and 'auto' not in value:
+                value['auto'] = 0
 
     def get_maps(self, model_id):
         """

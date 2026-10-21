@@ -28,6 +28,7 @@ from .service_loader import ServiceLoaderThread
 from .flow_layout import FlowLayout
 from ..service.script_information import request_record, redact, compact_history, portable_markdown, load_history, history_sessions, debug_feedback
 from ..service.script_debug import debug_exports
+from ..service.python_scripts import PYTHON_INSTRUCTIONS, parse_python
 
 DEFAULT_COMMAND = '提取释义、音标、例句和发音；纠正发音结构，结合词典 JS 还原真实音频路径，导入媒体库后同步更新播放引用。只提取词典已有内容。'
 
@@ -51,13 +52,15 @@ class ScriptOperationThread(ServiceLoaderThread):
 
 class Generation:
     def __init__(self, path, unique, words, names, command='', attachments=None, script_paths=None, class_name=None,
-                 history=None, message='', current=None, debug=False, record_directory=None, debug_result=None, session_id=None):
+                 history=None, message='', current=None, debug=False, record_directory=None, debug_result=None, session_id=None,
+                 return_json=True):
         self.path, self.unique, self.words, self.names = path, unique, words, names
         self.command, self.message = command, message
         self.history, self.current = deepcopy(history or []), deepcopy(current)
         self.debug, self.debug_result = debug, deepcopy(debug_result)
         self.record_directory, self.on_prepared = record_directory, None
         self.session_id = session_id
+        self.return_json = return_json
         selected = attachments if attachments is not None else {'html': True, 'js': True, 'script': True}
         self.attachments = {key: bool(selected.get(key, False)) for key in ('html', 'js', 'script')}
         self.script_paths, self.class_name = list(script_paths or []), class_name
@@ -109,6 +112,7 @@ class Generation:
                                       script_payload(originals) if self.attachments['script'] else [], self.attachments['html']))
             from ..service.dictionary_binding import descriptor
             prompt_data['dictionary'] = dict(descriptor(self.path), filename=Path(self.path).name)
+            prompt_data['output_format'] = 'json_rules' if self.return_json else 'python'
             prompt_data['attachments'] = dict(self.attachments, original_script_found=bool(originals),
                                                javascript_found=any('content' in item for item in javascript))
             if self.message:
@@ -126,7 +130,7 @@ class Generation:
             from ..service.script_information import hide_local_paths
             prompt_data = hide_local_paths(prompt_data, self.path)
             prompt = json.dumps(prompt_data, ensure_ascii=False)
-            instructions = CHAT_INSTRUCTIONS if self.message else INSTRUCTIONS
+            instructions = (CHAT_INSTRUCTIONS if self.message else INSTRUCTIONS) if self.return_json else PYTHON_INSTRUCTIONS
             history = redact(self.history, self.connection.key)
             payload = request_payload(self.connection.profile, prompt, instructions, history=history)
             record = request_record(self.connection.profile.get('model', ''), instructions, prompt_data, payload,
@@ -144,10 +148,31 @@ class Generation:
             if cancelled and cancelled():
                 record['state'] = 'cancelled'
                 return {'record': self._record(record)}
+            if not self.return_json:
+                try:
+                    source, generated_class = parse_python(response, self.class_name)
+                except (ValueError, SyntaxError):
+                    if self.message and not response.lstrip().startswith(('```', 'from ', 'import ', '#', 'class ', '@')):
+                        record['state'] = 'completed'
+                        return {'record': self._record(record), 'chat_only': True}
+                    raise
+                original = originals[0] if originals else None
+                filename = Path(original['path']).name if original else 'fcm_ai_' + dictionary_identity(self.path) + '.py'
+                result = {'samples': samples, 'javascript': javascript, 'prompt': prompt,
+                          'rules': {'fields': [], 'unavailable': []}, 'preview': [], 'filename': filename,
+                          'source': source, 'original': original, 'format': 'python', 'class_name': generated_class}
+                record['state'], record['local'] = 'completed', {'validation': 'syntax_and_structure_only',
+                                                               'generated_script': source, 'filename': filename}
+                result['record'] = self._record(record)
+                return result
             if self.message and not response.lstrip().startswith(('{', '```')):
                 record['state'], record['local'] = 'completed', {'message': tr('AI 已回复，未修改当前脚本。')}
                 return {'record': self._record(record), 'chat_only': True}
             rules = parse_rules(response, self.names)
+            if not rules['fields'] and 'media' in rules and not rules['media']:
+                record['state'] = 'completed'
+                record['local'] = {'message': tr('无需修改，保留原脚本。')}
+                return {'record': self._record(record), 'chat_only': True}
             original = originals[0] if originals else None
             if original:
                 filename = Path(original['path']).name
@@ -252,18 +277,14 @@ class ScriptGeneratorDialog(Dialog):
         self.imported_sessions = set()
         self._pending_import = None
         self._expanded_messages = set()
+        self._selected_messages = set()
+        self._message_contents = {}
         self.last_debug = None
         self._secret_values = set()
         self._operation_kind = 'generate'
         self._closed = False
         self.resize(820, 650)
         layout = QVBoxLayout(self)
-        explanation = QLabel(tr('按勾选内容发送三个词条、共享 JS 和原脚本；JS 去重后合并发送，并检查媒体路径修改。新脚本默认未启用，更新原脚本会先备份旧版。'))
-        explanation.setWordWrap(True)
-        layout.addWidget(explanation)
-        scope_hint = QLabel(tr('词典解析不使用 Skill。直接在“命令”中描述需要什么，AI 会确定导出字段并生成解析规则。'))
-        scope_hint.setWordWrap(True)
-        layout.addWidget(scope_hint)
         form = QFormLayout()
         form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
         form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
@@ -300,6 +321,17 @@ class ScriptGeneratorDialog(Dialog):
             checkbox.setToolTip(tr('未找到的附件不会发送；JS 和原脚本去重后只发送一次。'))
             self.attachments[key] = checkbox
             attachment_layout.addWidget(checkbox)
+        self.return_json = QCheckBox(tr('返回 JSON 规则'))
+        self.return_json.setChecked(True)
+        self.return_json.setToolTip(tr('勾选：返回规则并由插件生成 Python。取消：AI 直接返回 Python，生成时仅检查语法和结构；调试或保存后加载会执行代码。'))
+        attachment_layout.addWidget(self.return_json)
+        output_help = QToolButton()
+        output_help.setText('?')
+        output_help.setAutoRaise(True)
+        output_help.setAccessibleName(tr('输出方式说明'))
+        output_help.setToolTip(tr('查看 JSON 规则与直接生成 Python 的区别'))
+        output_help.clicked.connect(self.show_output_help)
+        attachment_layout.addWidget(output_help)
         attachment_layout.addStretch()
         form.addRow(tr('发送内容'), attachment_row)
         layout.addLayout(form)
@@ -324,7 +356,9 @@ class ScriptGeneratorDialog(Dialog):
         copy_all.clicked.connect(lambda: self.copy_information(all_records=True))
         export = QPushButton(tr('导出 Markdown'))
         export.clicked.connect(self.export_information)
-        for button in (self.copy_current, copy_all, export):
+        import_chat = QPushButton(tr('导入对话'))
+        import_chat.clicked.connect(self.import_conversation)
+        for button in (self.copy_current, copy_all, export, import_chat):
             copies.addWidget(button)
         information_layout.addLayout(copies)
         for label, widget in ((tr('提取预览'), self.preview), (tr('词条源码'), self.samples_view),
@@ -340,19 +374,17 @@ class ScriptGeneratorDialog(Dialog):
         self.chat_input.setMaximumHeight(65)
         chat_layout.addWidget(self.chat_input)
         chat_options = QHBoxLayout()
-        self.send_history = QCheckBox(tr('携带当前会话全部对话'))
+        self.send_history = QRadioButton(tr('携带全部消息'))
         self.send_history.setChecked(True)
-        self.send_debug = QCheckBox(tr('携带最近调试结果'))
-        self.send_debug.setChecked(True)
-        self.send_debug.setEnabled(False)
+        self.send_selected = QRadioButton(tr('携带勾选的消息'))
+        self.history_mode = QButtonGroup(self)
+        self.history_mode.addButton(self.send_history)
+        self.history_mode.addButton(self.send_selected)
         self.send_message = QPushButton(tr('发送消息'))
         self.send_message.clicked.connect(self.begin_chat)
-        for widget in (self.send_history, self.send_debug, self.send_message):
+        for widget in (self.send_history, self.send_selected, self.send_message):
             chat_options.addWidget(widget)
         chat_layout.addLayout(chat_options)
-        warning = QLabel(tr('每次打开窗口都会新建会话，可导入此词典的旧会话。携带历史时发送全部对话，不自动截断；附件不在历史中重复。历史越长，Token 消耗越高，也可能超过模型上下文限制。'))
-        warning.setWordWrap(True)
-        chat_layout.addWidget(warning)
         information_layout.addWidget(chat)
         action_bar = QWidget()
         actions = FlowLayout(action_bar)
@@ -361,37 +393,18 @@ class ScriptGeneratorDialog(Dialog):
         self.save_button = QPushButton(tr('保存脚本'))
         self.save_button.setEnabled(False)
         self.save_button.clicked.connect(self.save)
-        self.auto_debug = QToolButton()
-        self.auto_debug.setText(tr('自动调试'))
-        self.auto_debug.setCheckable(True)
-        self.auto_debug.setToolTip(tr('生成后运行本次导出方法；不执行旧脚本初始化，不写卡片，媒体仅存临时目录。'))
-        self.debug_button = QPushButton(tr('调试一次'))
+        self.debug_button = QPushButton(tr('调试'))
         self.debug_button.setEnabled(False)
         self.debug_button.clicked.connect(self.begin_debug)
-        self.cancel_button = QPushButton(tr('取消当前操作'))
-        self.cancel_button.setEnabled(False)
-        self.cancel_button.clicked.connect(self.cancel_operation)
-        close = QPushButton(tr('关闭'))
-        close.clicked.connect(self.reject)
-        for button in (self.generate, self.auto_debug, self.debug_button, self.save_button, self.cancel_button, close):
+        for button in (self.generate, self.debug_button, self.save_button):
             actions.addWidget(button)
-        layout.addWidget(action_bar)
-        history_bar = QWidget()
-        history_actions = FlowLayout(history_bar)
-        open_history = QPushButton(tr('打开信息历史目录'))
-        open_history.clicked.connect(lambda: self.open_history(False))
-        trash = QPushButton('🗑️')
-        trash.setToolTip(tr('查看回收站中的旧脚本'))
-        trash.clicked.connect(lambda: self.open_history(True))
         restore = self.restore_button = QPushButton(tr('恢复旧脚本'))
         restore.clicked.connect(self.restore_old_script)
         self.load_history_button = QPushButton(tr('导入之前的会话'))
         self.load_history_button.clicked.connect(self.begin_history)
         self.load_history_button.hide()
-        open_history.hide()
-        for button in (trash, restore):
-            history_actions.addWidget(button)
-        layout.addWidget(history_bar)
+        actions.addWidget(restore)
+        layout.addWidget(action_bar)
 
     def begin(self, *_):
         self._begin_request()
@@ -431,10 +444,11 @@ class ScriptGeneratorDialog(Dialog):
         self._operation_kind = 'chat' if message else 'generate'
         operation = Generation(self.dict_path, unique, words, None, command, attachments,
                                self.script_paths, self.class_name,
-                               history=compact_history(self.conversations) if message and self.send_history.isChecked() else [],
-                               message=message, current=self.result, debug=self.auto_debug.isChecked(),
+                               history=self.selected_history() if message else [],
+                               message=message, current=self.result, debug=False,
                                record_directory=None,
-                               debug_result=self.last_debug if message and self.send_debug.isChecked() else None, session_id=self.session_id)
+                               debug_result=None, session_id=self.session_id,
+                               return_json=self.return_json.isChecked())
         self._secret_values.add(operation.connection.key)
         loader = self.loader = ScriptOperationThread(operation)
         loader.prepared.connect(self.request_started)
@@ -446,9 +460,8 @@ class ScriptGeneratorDialog(Dialog):
         self.save_button.setEnabled(False)
         self.debug_button.setEnabled(False)
         self.send_message.setEnabled(False)
-        self.cancel_button.setEnabled(True)
         self.restore_button.setEnabled(False)
-        for widget in [self.profile_combo, self.command, *self.words, *self.attachments.values()]:
+        for widget in [self.profile_combo, self.command, self.return_json, *self.words, *self.attachments.values()]:
             widget.setEnabled(False)
         self.status.setText(tr('正在后台读取词条，首次建库可能需要等待…'))
         loader.start()
@@ -477,7 +490,6 @@ class ScriptGeneratorDialog(Dialog):
         loader.finished.connect(self.finished_loading)
         for button in (self.generate, self.debug_button, self.save_button, self.send_message, self.restore_button):
             button.setEnabled(False)
-        self.cancel_button.setEnabled(True)
         self.status.setText(tr('正在调试三个样本，媒体写入临时目录…'))
         loader.start()
 
@@ -491,7 +503,6 @@ class ScriptGeneratorDialog(Dialog):
                     self.add_information(record)
                     break
             self.status.setText(tr('已请求取消；已发出的 AI 请求需要返回或超时，迟到结果不会应用。'))
-            self.cancel_button.setEnabled(False)
 
     def begin_history(self, *_, session_id=None):
         if self.loader or self.token != profile_token():
@@ -503,7 +514,6 @@ class ScriptGeneratorDialog(Dialog):
         loader.finished.connect(self.finished_loading)
         self.generate.setEnabled(False)
         self.send_message.setEnabled(False)
-        self.cancel_button.setEnabled(True)
         loader.start()
 
     def _start_pending_import(self):
@@ -530,6 +540,8 @@ class ScriptGeneratorDialog(Dialog):
         return warning
 
     def render_conversation(self):
+        if self._closed:
+            return
         scrollbar = self.conversation.verticalScrollBar()
         follow = scrollbar.maximum() - scrollbar.value() < 30
         position = scrollbar.value()
@@ -541,6 +553,7 @@ class ScriptGeneratorDialog(Dialog):
         roles = {'user': tr('用户发送的消息'), 'assistant': 'AI',
                  'debug': tr('调试结果'), 'local': tr('本地处理')}
         blocks = []
+        self._message_contents = {}
         for index, record in enumerate(self.conversations):
             kind = record.get('kind', 'request')
             entries = []
@@ -557,21 +570,30 @@ class ScriptGeneratorDialog(Dialog):
                     entries.append(('local', tr('已取消')))
                 if record.get('local'):
                     entries.append(('local', json.dumps(record['local'], ensure_ascii=False, indent=2)))
+            elif kind == 'context':
+                entries.append(('user', record.get('content', '')))
             else:
                 entries.append(('debug' if kind == 'debug' else 'local', json.dumps(record, ensure_ascii=False, indent=2)))
             for role, content in entries:
                 key = '%s-%s' % (index, role)
                 content = str(content)
+                self._message_contents[key] = (roles[role], content)
                 preview, truncated = self.message_preview(content)
                 expanded = key in self._expanded_messages
                 shown = content if expanded else preview
                 control = (' <a href="toggle:%s" style="color:%s">%s</a>' %
                            (key, colors[role], escape(tr('收起') if expanded else tr('展开')))) if truncated else ''
                 # Escape all source and model output; only our fold controls are links.
-                blocks.append('<p style="color:%s"><b>%s</b>%s</p>'
-                              '<pre style="white-space:pre-wrap;font-family:%s">%s</pre><hr>' %
-                              (colors[role], escape(roles[role]), control,
-                               escape(self.conversation.font().family(), quote=True), escape(shown)))
+                try:
+                    stamp = datetime.fromisoformat(record.get('time', '').replace('Z', '+00:00')).astimezone().strftime('%Y-%m-%d %H:%M:%S')
+                except (ValueError, TypeError):
+                    stamp = str(record.get('time', ''))
+                check = '☑' if key in self._selected_messages else '☐'
+                blocks.append('<table width="100%%"><tr><td style="color:%s"><b>%s</b></td>'
+                              '<td align="right">%s &nbsp; <a href="select:%s" style="text-decoration:none;font-size:18px;color:%s">%s</a></td></tr></table>'
+                              '<pre style="white-space:pre-wrap;font-family:%s">%s</pre>%s<hr>' %
+                              (colors[role], escape(roles[role]), escape(stamp), key, colors[role], check,
+                               escape(self.conversation.font().family(), quote=True), escape(shown), control))
         self.conversation.setHtml(''.join(blocks))
         scrollbar.setValue(scrollbar.maximum() if follow else position)
 
@@ -596,14 +618,15 @@ class ScriptGeneratorDialog(Dialog):
         return content, False
 
     def toggle_message(self, url):
-        if url.scheme() != 'toggle':
+        if url.scheme() not in ('toggle', 'select'):
             return
         position = self.conversation.verticalScrollBar().value()
         key = url.path()
-        if key in self._expanded_messages:
-            self._expanded_messages.remove(key)
+        selected = self._selected_messages if url.scheme() == 'select' else self._expanded_messages
+        if key in selected:
+            selected.remove(key)
         else:
-            self._expanded_messages.add(key)
+            selected.add(key)
         self.render_conversation()
         self.conversation.verticalScrollBar().setValue(position)
 
@@ -613,12 +636,35 @@ class ScriptGeneratorDialog(Dialog):
             QTimer.singleShot(0, self.render_conversation)
 
     def copy_selected_information(self):
+        messages = ['%s:\n%s' % self._message_contents[key] for key in self._message_contents
+                    if key in self._selected_messages]
+        if messages:
+            QApplication.clipboard().setText('\n\n'.join(messages))
+            self.status.setText(tr('信息已复制，可粘贴给其他 AI。'))
+            return
         selected = self.conversation.textCursor().selectedText()
         if selected:
             QApplication.clipboard().setText(selected.replace('\u2029', '\n').replace('\u2028', '\n'))
             self.status.setText(tr('信息已复制，可粘贴给其他 AI。'))
         else:
             self.status.setText(tr('请先选择要复制的对话内容。'))
+
+    def selected_history(self):
+        """Keep ordered role-level selections; attachments are sent in the current request only."""
+        messages = []
+        for key, (label, content) in self._message_contents.items():
+            if self.send_selected.isChecked() and key not in self._selected_messages:
+                continue
+            index, role = key.split('-', 1)
+            record = self.conversations[int(index)]
+            if role == 'assistant' and not record.get('response'):
+                continue
+            if role == 'user' and record.get('kind', 'request') == 'request':
+                content = str(record.get('user_message') or record.get('request', {}).get('user_command', ''))
+            if role in ('debug', 'local'):
+                content = label + ':\n' + content
+            messages.append({'role': 'assistant' if role == 'assistant' else 'user', 'content': content})
+        return messages
 
     def copy_information(self, *_, all_records=False):
         records = self.conversations if all_records else self.conversations[-1:]
@@ -633,6 +679,24 @@ class ScriptGeneratorDialog(Dialog):
                 self.status.setText(tr('信息历史已导出。'))
             except OSError:
                 self.status.setText(tr('导出失败，请检查保存路径。'))
+
+    def import_conversation(self):
+        if self.loader:
+            return
+        path, _ = QFileDialog.getOpenFileName(self, tr('导入对话'), '', 'Text / Markdown (*.txt *.md)')
+        if not path:
+            return
+        try:
+            with open(path, encoding='utf-8-sig') as stream:
+                content = stream.read(1000001)
+            if len(content) > 1000000:
+                raise ValueError(tr('对话文件过大。'))
+            if not content.strip():
+                raise ValueError(tr('对话文件为空。'))
+            self.add_information({'kind': 'context', 'content': content, 'filename': Path(path).name})
+            self.tabs.setCurrentIndex(3)
+        except (OSError, ValueError, UnicodeError) as error:
+            self.status.setText(str(error))
 
     def ready(self, result):
         if self._closed or self.token != profile_token():
@@ -677,7 +741,6 @@ class ScriptGeneratorDialog(Dialog):
             for secret in self._secret_values:
                 debug = redact(debug, secret)
             self.last_debug = debug
-            self.send_debug.setEnabled(True)
             warning = self.add_information(debug) or warning
             self.tabs.setCurrentIndex(3)
         if result.get('error'):
@@ -694,13 +757,16 @@ class ScriptGeneratorDialog(Dialog):
             self._result_saved = False
             if self.last_debug and self.last_debug.get('source_sha256') != sha256(result['source'].encode()).hexdigest():
                 self.last_debug = None
-                self.send_debug.setEnabled(False)
             self.preview.setPlainText(json.dumps(result['preview'], ensure_ascii=False, indent=2))
             prompt = result.get('prompt') or build_prompt(result['samples'], None, result.get('javascript'))
             self.samples_view.setPlainText(json.dumps(json.loads(prompt), ensure_ascii=False, indent=2))
             self.source_view.setPlainText(result['source'])
             unavailable = result['rules']['unavailable']
-            message = tr('规则已通过三个样本的提取检查。未找到的字段：%s') % ('、'.join(unavailable) or tr('无'))
+            if result.get('format') == 'python':
+                message = tr('Python 语法和结构检查通过，尚未执行。可查看源码后点击调试。')
+                self.tabs.setCurrentIndex(2)
+            else:
+                message = tr('规则已通过三个样本的提取检查。未找到的字段：%s') % ('、'.join(unavailable) or tr('无'))
             self.save_button.setEnabled(True)
             self.debug_button.setEnabled(True)
         else:
@@ -719,13 +785,38 @@ class ScriptGeneratorDialog(Dialog):
         if not self._closed:
             self.generate.setEnabled(True)
             self.send_message.setEnabled(True)
-            self.cancel_button.setEnabled(False)
             self.debug_button.setEnabled(bool(self.result))
             self.save_button.setEnabled(bool(self.result) and not self._result_saved)
             self.restore_button.setEnabled(True)
             QTimer.singleShot(0, self._start_pending_import)
-            for widget in [self.profile_combo, self.command, *self.words, *self.attachments.values()]:
+            for widget in [self.profile_combo, self.command, self.return_json, *self.words, *self.attachments.values()]:
                 widget.setEnabled(True)
+
+    def show_output_help(self):
+        content = tr(
+            '在“命令”中描述需求；解析不使用连接的 Skill。默认样本各选名词、动词、形容词，'
+            '找不到时自动选备选词。附件按勾选发送，缺失的跳过，JS 和原脚本去重。\n\n'
+            '勾选（默认）：AI 返回 JSON 规则，插件生成 Python 脚本。'
+            '适合常规字段提取和支持的音频路径修复；格式统一，可检查规则并预览提取结果，'
+            '但不能自由编写复杂逻辑。\n\n'
+            '不勾选：AI 直接返回完整 Python 脚本。'
+            '适合嵌套内容重组、复杂音频路径处理和修改原脚本，灵活性更高。'
+            '生成时仅检查语法和结构，不代表运行正确或安全；'
+            '查看源码后点击“调试”运行测试；保存后加载脚本也会执行代码。\n\n'
+            '两种方式最终保存的都是 .py 脚本。新脚本默认不启用；更新原脚本先备份旧版。\n\n'
+            '信息历史只保留在当前窗口，关闭后不保存；可主动复制或导出 Markdown。'
+            '可导入 TXT／Markdown 对话作为上下文。默认“携带全部消息”；选择“携带勾选的消息”时只发送右侧勾选的消息，未勾选则不携带历史。'
+            '新消息默认不勾选。携带历史会增加 Token 消耗，过长可能超过模型限制；用户消息的附件只在当前请求中发送。\n\n'
+            '每次点击“调试”检查三个样本，详情显示在信息历史。消息右侧勾选框用于选择复制，展开按钮在消息后面。'
+            '点击“恢复旧脚本”查看名称与删除时间，在列表中选择恢复或只读打开；旧版本保留七天。'
+            '关闭窗口会停止接收本次结果；已经发出的请求仍可能产生费用。')
+        dialog = Dialog(self, tr('输出方式说明'))
+        dialog.resize(660, 480)
+        layout = QVBoxLayout(dialog)
+        viewer = QTextBrowser()
+        viewer.setPlainText(content)
+        layout.addWidget(viewer)
+        dialog.exec()
 
     def save(self):
         if self.loader or not self.result or self._result_saved or self.token != profile_token():
@@ -767,9 +858,15 @@ class ScriptGeneratorDialog(Dialog):
     def restore_old_script(self):
         if self.loader or self.token != profile_token():
             return
-        filename, _ = QFileDialog.getOpenFileName(self, tr('恢复旧脚本'), str(trash_directory(self.script_directory)), '*.py.bak')
-        if not filename:
+        from .script_recycle import ScriptRecycleDialog
+        try:
+            dialog = ScriptRecycleDialog(self, self.script_directory)
+            if dialog.exec() != QDialog.DialogCode.Accepted or not dialog.selected_path:
+                return
+        except (OSError, ValueError):
+            self.status.setText(tr('恢复旧脚本失败。'))
             return
+        filename = dialog.selected_path
         try:
             path = restore_script(filename, self.script_directory)
             from ..service.script_library import publish
@@ -777,7 +874,6 @@ class ScriptGeneratorDialog(Dialog):
             self.result = None
             self.last_debug = None
             self._result_saved = False
-            self.send_debug.setEnabled(False)
             self.debug_button.setEnabled(False)
             self.save_button.setEnabled(False)
             self.status.setText(tr('旧脚本已恢复，重新检测后应用。'))

@@ -18,7 +18,7 @@ class MdxService(MdxMediaMixin, LocalService):
         binding = getattr(type(self), '__dict_binding__', None)
         if binding:
             from .dictionary_binding import resolve_dictionary
-            dict_path = resolve_dictionary(binding['file'], binding['title'])
+            dict_path = resolve_dictionary(binding['file'], binding['title'], dict_path)
         super(MdxService, self).__init__()
         self.dict_path = dict_path
         self.media_cache = defaultdict(set)

@@ -73,6 +73,11 @@ class AIQueryRunner:
                 word = values.get(source_name, '').strip()
             for index, mapping in enumerate(maps):
                 target = mapping.get('fld_ord', index)
+                if mapping.get('fld_name'):
+                    if mapping['fld_name'] not in names:
+                        logger.warning('Unavailable AI target skipped: %s', mapping['fld_name'])
+                        continue
+                    target = names.index(mapping['fld_name'])
                 if index == source or mapping.get('ignore', False) or not is_ai(mapping.get('dict_unique')):
                     continue
                 if not 0 <= target < len(names) or (fields is not None and target not in fields):

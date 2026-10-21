@@ -16,9 +16,13 @@ MAX_ATTEMPTS = 3
 
 def starred_mappings(model):
     conf = config.get_maps(model['id'])
+    if isinstance(conf, list):
+        conf = {'list': [conf], 'auto': 0}
     if not isinstance(conf, dict):
         return None
-    index, choices = conf.get('auto', -1), conf.get('list', [])
+    index, choices = conf.get('auto', 0), conf.get('list', [])
+    if choices and (type(index) is not int or not 0 <= index < len(choices)):
+        index = 0
     if type(index) is not int or not 0 <= index < len(choices):
         return None
     choice = choices[index]

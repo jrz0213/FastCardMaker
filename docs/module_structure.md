@@ -93,4 +93,6 @@ Qt 检查采用 `offscreen` 模式，不显示窗口，也不打开用户的 Ank
 
 ## 可移植脚本与备份
 
-`service/dictionary_binding.py` 只读取有界 MDX 文件头，以文件名和内部标题关联本机目录。`service/script_library.py` 管理本机运行副本，`service/script_backup.py` 按排序后的文件清单比较内容指纹并原子更新媒体库 ZIP；配置继续写 JSON。`gui/script_compare.py` 提供互斥版本选择和只读查看。目录扫描不再同步相邻 Python 文件，也不因移除目录而删除脚本。AI 对话不自动落盘。
+`service/dictionary_binding.py` 以 MDX 文件名优先关联本机目录，内部标题可选，兼容旧路径。`service/script_library.py` 管理本机运行副本，`service/script_backup.py` 按排序后的文件清单比较内容指纹。`utils/backup_store.py` 原子更新包含 AI／字段配置和 Python 脚本的统一 ZIP，基本偏好继续写 JSON；`gui/backup_controls.py` 提供自动／手动备份与 ZIP 导入导出。`gui/script_compare.py` 提供互斥版本选择和只读查看。目录扫描不再同步相邻 Python 文件，也不因移除目录而删除脚本。AI 对话不自动落盘。
+
+`service/python_scripts.py` 定义直接返回 Python 的提示词，静态检查语法和注册类。JSON 模式仍通过可信模板生成脚本；Python 模式不自动执行，手动调试才执行完整代码，属于普通 Python 执行而非沙箱。

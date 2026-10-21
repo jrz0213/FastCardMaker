@@ -46,13 +46,14 @@ def read_settings():
             if isinstance(backup, dict) and getattr(config, 'data', {}).get('backup_api_keys', True):
                 for identifier, key in backup.items():
                     if isinstance(identifier, str) and isinstance(key, str):
-                        keys.setdefault(identifier, key)
+                        if key:
+                            keys[identifier] = key
             previous = {item['id']: item for item in data.get('profiles', []) if isinstance(item, dict) and 'id' in item}
             for item in shared.get('profiles', []):
                 old = previous.get(item.get('id'), {})
                 if old.get('base_url'):
                     before, after = urlsplit(old['base_url']), urlsplit(item.get('base_url', ''))
-                    if (before.scheme, before.netloc) != (after.scheme, after.netloc):
+                    if (before.scheme, before.netloc) != (after.scheme, after.netloc) and not backup.get(item.get('id')):
                         keys.pop(item.get('id'), None)
             data = dict(deepcopy(shared), keys=keys)
         if not isinstance(data, dict) or not isinstance(data.get('profiles', []), list):

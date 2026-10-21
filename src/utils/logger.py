@@ -47,21 +47,13 @@ def set_logging_state(enable: bool):
         logger.removeHandler(h)
         h.close()
         
-    if enable:
-        logger.setLevel(logging.INFO)
-        
-        # ========== 【最优修改】 ==========
-        # 获取操作系统的临时目录 (如 C:\Users\xxx\AppData\Local\Temp)
-        # 这个目录的文件会被操作系统自动回收清理，且不会锁死 Anki 插件更新
-        temp_dir = tempfile.gettempdir()
-        log_path = os.path.join(temp_dir, 'FastCardMaker.log')
-        # ==================================
-        
-        fh = RotatingFileHandler(log_path, maxBytes=1024*1024, backupCount=1, encoding='utf-8')
-        fmt = '%(asctime)s | %(levelname)s | %(message)s'
-        fh.setFormatter(TruncatingFormatter(fmt, max_len=500)) 
-        logger.addHandler(fh)
-        logger.info(f"[系统控制] 日志已开启，临时存储于: {log_path}")
-    else:
-        logger.setLevel(logging.WARNING)
+    logger.setLevel(logging.INFO if enable else logging.WARNING)
+    log_path = os.path.join(tempfile.gettempdir(), 'FastCardMaker.log')
+    try:
+        handler = RotatingFileHandler(log_path, maxBytes=1024*1024, backupCount=1, encoding='utf-8')
+        handler.setFormatter(TruncatingFormatter('%(asctime)s | %(levelname)s | %(message)s', max_len=500))
+        logger.addHandler(handler)
+        if enable:
+            logger.info('Detailed logging enabled: %s', log_path)
+    except OSError:
         logger.addHandler(logging.NullHandler())

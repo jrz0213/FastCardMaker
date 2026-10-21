@@ -107,12 +107,14 @@ class TabContent(QScrollArea):
             label.setWordWrap(True)
 
         self.radio_group = QButtonGroup()
+        names = {field['name'] for field in model['flds']}
+        self._missing_mappings = [dict(each) for each in maps or [] if each.get('fld_name') and each['fld_name'] not in names]
         for i, fld in enumerate(model['flds']):
             ord = fld['ord']
             name = fld['name']
             if maps:
                 for j, each in enumerate(maps):
-                    if each.get('fld_ord', -1) == ord or each.get('fld_name', '') == name:
+                    if each.get('fld_name', '') == name or (not each.get('fld_name') and each.get('fld_ord', -1) == ord):
                         each['fld_name'] = name
                         each['fld_ord'] = ord
                         self.add_dict_layout(i, **each)
@@ -122,6 +124,8 @@ class TabContent(QScrollArea):
             else:
                 self.add_dict_layout(i, fld_name=name, fld_ord=ord, word_checked=i == 0)
 
+        for missing in self._missing_mappings:
+            self.dicts_layout.addWidget(QLabel(missing['fld_name'] + ' (' + tr('不可用') + ')'), self.dicts_layout.rowCount(), 0, 1, 4)
         current_row = self.dicts_layout.rowCount()
         self.dicts_layout.setRowStretch(current_row, 1)
 
@@ -178,7 +182,7 @@ class TabContent(QScrollArea):
                 for key in ('dict_fld_name', 'dict_fld_ord'):
                     if key in saved:
                         maps[-1][key] = saved[key]
-        return maps
+        return maps + [dict(item) for item in getattr(self, '_missing_mappings', [])]
 
     def commit_mapping(self):
         """Make a successful save the new baseline for later status-only refreshes."""

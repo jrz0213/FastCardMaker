@@ -111,33 +111,50 @@ class SettingDialog(Dialog):
         self.auto_enabled = QCheckBox(tr('启用定时制作'))
         self.auto_enabled.setChecked(bool(settings.get('enabled', False)))
         auto_layout.addWidget(self.auto_enabled)
+        self.auto_panel = QWidget()
+        schedule_layout = QVBoxLayout(self.auto_panel)
+        schedule_layout.setContentsMargins(8, 0, 0, 0)
         interval = QHBoxLayout()
         interval.addWidget(QLabel(tr('检测间隔（分钟）')))
         self.auto_interval = QSpinBox()
         self.auto_interval.setRange(1, 1440)
         self.auto_interval.setValue(settings.get('interval_minutes', 5))
         interval.addWidget(self.auto_interval)
-        auto_layout.addLayout(interval)
+        schedule_layout.addLayout(interval)
         self.auto_models = QListWidget()
         self.auto_models.setStyleSheet('QListWidget::item { padding-left: 8px; }')
+        self.auto_models.setMaximumHeight(160)
         selected = {str(v) for v in settings.get('model_ids', [])}
         for model in mw.col.models.all():
-            item = QListWidgetItem(model['name'], self.auto_models)
+            conf = getattr(config, 'get_maps', lambda mid: {})(model['id'])
+            choices = conf.get('list', []) if isinstance(conf, dict) else []
+            index = conf.get('auto', 0) if isinstance(conf, dict) else 0
+            index = index if type(index) is int and 0 <= index < len(choices) else 0
+            choice = choices[index] if choices else {}
+            name = choice.get('name', tr('配置 %s') % 1) if isinstance(choice, dict) else tr('配置 %s') % 1
+            item = QListWidgetItem(model['name'] + ' · ' + name, self.auto_models)
             item.setData(Qt.ItemDataRole.UserRole, model['id'])
             item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
             item.setCheckState(Qt.CheckState.Checked if str(model['id']) in selected else Qt.CheckState.Unchecked)
-        auto_layout.addWidget(QLabel(tr('勾选参与自动制作的笔记类型')))
-        auto_layout.addWidget(self.auto_models)
+        schedule_layout.addWidget(QLabel(tr('勾选参与自动制作的笔记类型')))
+        select = QCheckBox(tr('全选／取消全选'))
+        select.setProperty('fastcm_ephemeral', True)
+        select.toggled.connect(lambda checked: [self.auto_models.item(i).setCheckState(
+            Qt.CheckState.Checked if checked else Qt.CheckState.Unchecked) for i in range(self.auto_models.count())])
+        schedule_layout.addWidget(select)
+        schedule_layout.addWidget(self.auto_models)
         tip = QLabel(tr('使用点亮星星的配置。只处理启用后新增笔记的空字段；上一批未结束时跳过本轮。Anki 关闭后停止。'))
         tip.setWordWrap(True)
-        auto_layout.addWidget(tip)
-        self.read_config_button = QPushButton(tr('读取配置'))
-        self.read_config_button.clicked.connect(self.read_configuration)
-        auto_layout.addWidget(self.read_config_button)
+        schedule_layout.addWidget(tip)
+        self.auto_panel.setVisible(self.auto_enabled.isChecked())
+        self.auto_panel.setEnabled(self.auto_enabled.isChecked())
+        self.auto_enabled.toggled.connect(self.auto_panel.setVisible)
+        self.auto_enabled.toggled.connect(self.auto_panel.setEnabled)
+        auto_layout.addWidget(self.auto_panel)
         self.configuration_loaded = False
-        self.backup_api_keys = QCheckBox(tr('将 API Key 包含在备份中（明文，随媒体同步）'))
-        self.backup_api_keys.setChecked(bool(getattr(config, 'data', {}).get('backup_api_keys', True)))
-        auto_layout.addWidget(self.backup_api_keys)
+        from .backup_controls import build_controls
+        build_controls(self, auto_layout)
+        auto_layout.addStretch()
         add_page(automatic, tr('通用设置'))
 
         advanced = QWidget()
@@ -157,7 +174,7 @@ class SettingDialog(Dialog):
         advanced_layout.addRow(_('THREAD_NUMBER'), self.input_thread_number)
         self.input_cloze_str = QLineEdit(getattr(config, 'cloze_str', '{{c1::%s}}'))
         self.input_sound_str = QLineEdit(config.sound_str)
-        language_form.addRow(_('CLOZE_WORD_FORMAT'), self.input_cloze_str)
+        advanced_layout.addRow(_('CLOZE_WORD_FORMAT'), self.input_cloze_str)
         advanced_layout.addRow(_('SOUND_FORMAT'), self.input_sound_str)
         add_page(advanced, tr('词典设置'))
         tabs.tabBar().moveTab(2, 1)
@@ -210,6 +227,8 @@ class SettingDialog(Dialog):
         self.reject()
 
     def reset(self):
+        from .backup_controls import choose_mode
+        choose_mode(self, 'auto')
         self.backup_api_keys.setChecked(True)
         self.language_combo.setCurrentIndex(0)
         self.ai_send_mode.setCurrentIndex(0)
@@ -235,13 +254,6 @@ class SettingDialog(Dialog):
 
     def save(self):
         selected = [self.auto_models.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.auto_models.count()) if self.auto_models.item(i).checkState() == Qt.CheckState.Checked]
-        if self.auto_enabled.isChecked():
-            for mid in selected:
-                conf = config.get_maps(mid)
-                index = conf.get('auto', -1) if isinstance(conf, dict) else -1
-                if type(index) is not int or not isinstance(conf, dict) or not 0 <= index < len(conf.get('list', [])):
-                    QMessageBox.warning(self, tr('自动运行配置'), tr('请先为参与自动运行的笔记类型点亮一个配置星星。'))
-                    return False
         if self.ai_css_enabled.isChecked():
             try:
                 rules(self.style_css.toPlainText())
@@ -249,6 +261,7 @@ class SettingDialog(Dialog):
                 QMessageBox.warning(self, tr('AI 内容格式'), str(error))
                 return False
         try:
+            config.update({'backup_mode': self._backup_mode})
             save_transport(self.ai_rate.value(), self.ai_timeout.value(), self.ai_connect_timeout.value(), self.ai_retries.value(),
                            backup_api_keys=self.backup_api_keys.isChecked())
         except ValueError as error:

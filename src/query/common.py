@@ -63,7 +63,13 @@ def inspect_note(note, mappings=None):
     def purify_word(word):
         return word.strip() if word else ''
 
-    word = purify_word(note.fields[word_ord])
+    source_name = maps[word_ord].get('fld_name') if maps and 0 <= word_ord < len(maps) else None
+    positions = [field['name'] for field in note.note_type()['flds']]
+    if source_name and source_name not in positions:
+        logger.warning('Unavailable source field skipped: %s', source_name)
+        return word_ord, '', maps
+    source_position = positions.index(source_name) if source_name else word_ord
+    word = purify_word(note.fields[source_position]) if 0 <= source_position < len(note.fields) else ''
     return word_ord, word, maps
 
 
@@ -196,6 +202,12 @@ def query_flds(note, fileds=None, cancelled=None, include_ai=True, mappings=None
     field_values = dict(zip((field['name'] for field in note.note_type()['flds']), note.fields))
     for index, each in enumerate(maps):
         target = each.get('fld_ord', index)
+        if each.get('fld_name'):
+            names = [field['name'] for field in note.note_type()['flds']]
+            if each['fld_name'] not in names:
+                logger.warning('Unavailable target field skipped: %s', each['fld_name'])
+                continue
+            target = names.index(each['fld_name'])
         if index == word_ord or not 0 <= target < len(note.fields) or each.get('ignore', False):
             continue
         if fileds is not None and target not in fileds:
@@ -241,6 +253,10 @@ def query_flds(note, fileds=None, cancelled=None, include_ai=True, mappings=None
                 try:
                     field_order = mapping['dict_fld_ord']
                     fields = getattr(service, 'fields', None)
+                    if (mapping.get('dict_fld_name') and isinstance(fields, (list, tuple)) and
+                            (not 0 <= field_order < len(fields) or fields[field_order] != mapping['dict_fld_name'])):
+                        logger.warning('Unavailable dictionary item skipped: %s', mapping['dict_fld_name'])
+                        continue
                     if (type(field_order) is not int or field_order < 0 or
                             isinstance(fields, (list, tuple)) and field_order >= len(fields)):
                         raise ValueError(tr('词典字段不可用，请手动选择有效字段。'))

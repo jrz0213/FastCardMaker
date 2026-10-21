@@ -69,10 +69,8 @@ class Catalogue:
 
     def candidates(self, binding):
         # Read headers only after the filename has matched.
-        if not binding.get('title'):
-            return []
-        return [path for path in self.files.get(binding['file'].casefold(), [])
-                if descriptor(path)['title'] == binding['title']]
+        candidates = self.files.get(_normal(binding['file']).casefold(), [])
+        return [path for path in candidates if not binding.get('title') or descriptor(path)['title'] == binding['title']]
 
 
 @contextmanager
@@ -84,15 +82,21 @@ def use_catalogue(catalogue):
         _catalogue.reset(token)
 
 
-def resolve_dictionary(filename, title):
+def resolve_dictionary(filename, title='', legacy_path=''):
     catalogue = _catalogue.get()
     if catalogue is None:
         from ..context import config
         catalogue = Catalogue(getattr(config, 'dirs', []))
-    binding = {'file': _normal(filename), 'title': _normal(title)}
+    binding = {'file': _normal(Path(filename.replace('\\', '/')).stem), 'title': _normal(title)}
     found = catalogue.candidates(binding)
     if len(found) == 1:
         return found[0]
+    if legacy_path and os.path.isfile(legacy_path):
+        candidate = os.path.realpath(legacy_path)
+        if not found or candidate in found:
+            return candidate
+    from ..utils.logger import logger
+    logger.warning('Dictionary unavailable: file=%s title=%s matches=%s', binding['file'], binding['title'], len(found))
     # Nonempty prevents legacy scripts from using a fuzzy fallback on failure.
     return '__fastcm_unavailable__/' + identity(binding) + '.mdx'
 
@@ -107,24 +111,23 @@ def source_binding(source):
                         values[target.id] = ast.literal_eval(node.value)
                     except (ValueError, TypeError):
                         pass
-    if isinstance(values.get('DICT_FILE'), str) and isinstance(values.get('DICT_TITLE'), str):
-        return {'file': values['DICT_FILE'], 'title': values['DICT_TITLE']}
+    if isinstance(values.get('DICT_FILE'), str):
+        return {'file': Path(values['DICT_FILE'].replace('\\', '/')).stem, 'title': values.get('DICT_TITLE', '') or ''}
     if isinstance(values.get('DICT_PATH'), str) and values['DICT_PATH']:
-        return descriptor(values['DICT_PATH'])
+        return {'file': descriptor(values['DICT_PATH'])['file'], 'title': ''}
     return None
 
 
 def portable_source(source, path=None):
     """Replace legacy path constants without changing exports or class IDs."""
-    binding = descriptor(path) if path else source_binding(source)
+    # Runtime loading and backups preserve existing Python, including path repair code.
+    # Explicit conversion is reserved for the user's import/association operation.
+    if path is None:
+        return source
+    binding = descriptor(path)
     if not binding:
         return source
     tree = ast.parse(source)
-    if path is None and any(isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and
-            t.id == 'DICT_FILE' for t in node.targets) for node in tree.body) and not any(
-            isinstance(node, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'DICT_PATH'
-            for t in node.targets) and isinstance(node.value, ast.Constant) for node in tree.body):
-        return source
     declarations = [node for node in tree.body if isinstance(node, ast.Assign) and any(
         isinstance(t, ast.Name) and t.id in ('DICT_PATH', 'DICT_FILE', 'DICT_TITLE') for t in node.targets)]
     declarations += [node for node in tree.body if isinstance(node, ast.ImportFrom) and
@@ -135,7 +138,7 @@ def portable_source(source, path=None):
     lines = source.splitlines(keepends=True)
     replacement = ('from ..dictionary_binding import resolve_dictionary\n'
                    'DICT_FILE = ' + repr(binding['file']) + '\n'
-                   'DICT_TITLE = ' + repr(binding['title']) + '\n'
+                   'DICT_TITLE = ' + repr('') + '\n'
                    'DICT_PATH = resolve_dictionary(DICT_FILE, DICT_TITLE)\n')
     first = min(node.lineno for node in declarations)
     for node in sorted(declarations, key=lambda n: n.lineno, reverse=True):

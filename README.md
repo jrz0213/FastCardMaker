@@ -25,7 +25,9 @@ AI can work with concepts, questions, study material and vocabulary. Prompts can
 
 AI 可用于概念、问题、学习材料及词汇。提示词支持多个字段，例如 `结合{{主题}}回答{{问题}}`。插件填充已有笔记，卡片显示方式由 Anki 模板决定。
 
-打开选项时检查本机与媒体配置的差异，并由用户选择覆盖或同步。词典路径仅保存在本机；API Key 默认包含在配置备份中，可在通用设置关闭。Python 词典脚本单独同步到 `_fastcm_scripts.zip`，差异可逐文件选择本机或备份版本。Settings differences are resolved explicitly; dictionary paths stay local. API keys are included in settings backup by default (optional). Python parsers sync separately in `_fastcm_scripts.zip` with per-file version choices.
+通用设置可选择自动或手动备份。AI 连接、字段配置和 Python 脚本统一保存到 `_fastcm_backup.zip`，词典路径仅存本机。API Key 默认包含，可关闭；脚本差异可逐文件选择本机或备份版本。AI 解析支持 JSON 规则或直接生成 Python，点击问号查看说明。
+
+General settings offer automatic or manual backup. AI connections, field mappings and Python parsers share `_fastcm_backup.zip`; dictionary paths stay local. Including API keys is optional and enabled by default. Script conflicts offer per-file version choices. AI parsing supports JSON rules or direct Python output; click **?** for help.
 
 ## 安装 / Install
 

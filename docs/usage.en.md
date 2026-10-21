@@ -10,6 +10,16 @@ For your first run, connect AI, configure fields, then test a few notes. AI and 
 
 ## Create cards with AI
 
+Built-in connection presets include:
+
+- **DeepSeek**
+- **Claude (Anthropic)**
+- **Qwen (Alibaba)**
+- **ChatGPT / OpenAI models**
+- **Gemini (Google)**
+
+You can also enter a custom API endpoint for other services or gateways supporting the corresponding API format. Enter your own API key and the corresponding model name.
+
 ### 1. Prepare notes and connect AI
 
 Add notes in Anki and fill in a topic, question or study material. For example, create `Topic`, `Question` and `Answer` fields, fill the first two, and leave Answer for AI. The plugin fills existing notes; Anki templates control the front and back of each card.
@@ -142,6 +152,8 @@ Set dictionary folders separately on each computer. Missing dictionaries are nev
 ![Enable the dictionaries you want](images/user-guide/en-dictionary-manager.png)
 
 If a dictionary moves, restore its path and rescan. Unavailable sources are not automatically replaced. Use default parsing for complete entries, or a script for separate meaning, example or pronunciation items.
+
+**Audio import tip:** If entries display but audio cannot be imported, the dictionary's JavaScript may be changing audio filenames or paths dynamically, leaving default parsing unable to resolve them. First check that the MDD and resource files are complete. Then try **AI parse** with **Send HTML** and **Send JS** selected; include **Send original script** when revising an existing parser. For example: “Check whether JS changes audio paths, fix pronunciation extraction, and preserve other fields.” Inspect the preview, run debugging, save the parser and test a few notes. AI may not resolve every dynamic rule, and a parser cannot restore missing audio files.
 
 ### 2. Generate or revise a parser with AI
 

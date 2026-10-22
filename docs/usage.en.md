@@ -33,7 +33,7 @@ These connections also serve dictionary script analysis. Consider a separate “
 
 Use examples supported by your model; `high` does not imply the same reasoning budget across services. The Claude example retains the required `max_tokens` output limit, which can be adjusted. Older models may need different thinking settings. Higher effort can increase waiting time and token use; click **?** for parameter help.
 
-Region or workspace settings may require a different URL, especially with Model Studio; use the endpoint from your own console.
+New Qwen profiles use the Model Studio Beijing endpoint, `https://dashscope.aliyuncs.com/compatible-mode/v1/responses`. Your region or workspace may require another URL; use the endpoint from your console. Saved profile URLs are not replaced automatically.
 
 ### Map fields and write prompts
 

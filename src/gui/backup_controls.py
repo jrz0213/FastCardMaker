@@ -26,8 +26,8 @@ def build_controls(dialog, layout):
         action.triggered.connect(lambda checked, value=code: choose_mode(dialog, value))
     dialog.backup_mode.setMenu(menu)
     box.addWidget(with_help(dialog.backup_mode, tr('配置保存'), tr(
-        '自动备份：保存修改后，将 AI 连接、字段配置和当前 Python 脚本更新到媒体库 ZIP，随 Anki 媒体同步。'
-        '手动备份：只保存到本机，使用导入／导出 ZIP 自行传递。\n\n'
+        '自动备份：保存修改后，将 AI 配置和当前 Python 脚本更新到媒体库 ZIP，随 Anki 媒体同步。'
+        '手动备份：AI 配置和脚本只保存到本机，使用导入／导出 ZIP 自行传递。普通设置、字段配置和脚本勾选状态始终保存在媒体配置中。\n\n'
         '词典路径、MDX／MDD 文件、词典附带 JS、对话记录和回收站中的旧脚本不进入备份。'
         '旧脚本仅在本机保留七天，恢复为当前脚本后才参与备份。\n\n'
         'API Key 只保存在本机系统凭证库，不参与同步和备份；换设备后重新填写。'

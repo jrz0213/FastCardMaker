@@ -14,7 +14,7 @@ from .store import read_settings, write_settings, remove_legacy_settings
 PRESETS = {
     'openai': ('ChatGPT / OpenAI', 'https://api.openai.com/v1/responses', 'responses'),
     'deepseek': ('DeepSeek', 'https://api.deepseek.com/responses', 'responses'),
-    'qwen': (tr('Qwen / 百炼'), 'https://maas.qianwenaiapi.com/compatible-mode/v1/responses', 'responses'),
+    'qwen': (tr('Qwen / 百炼'), 'https://dashscope.aliyuncs.com/compatible-mode/v1/responses', 'responses'),
     'gemini': ('Gemini', 'https://generativelanguage.googleapis.com/v1beta/interactions', 'interactions'),
     'claude': ('Claude', 'https://api.anthropic.com/v1/messages', 'messages'),
     'custom': (tr('自定义'), '', 'responses'),

@@ -1,4 +1,4 @@
-"""One portable ZIP for AI/mapping settings and Python parsers; local paths stay local."""
+"""One portable ZIP for AI settings and Python parsers; local paths stay local."""
 from copy import deepcopy
 import json
 import os
@@ -35,6 +35,9 @@ def read_bundle(path=None):
                 raise ValueError('Unexpected backup entry')
             settings = json.loads(archive.read('settings.json').decode('utf-8')) if 'settings.json' in archive.namelist() else {}
             manifest = json.loads(archive.read('manifest.json').decode('utf-8')) if 'manifest.json' in archive.namelist() else {}
+            if not isinstance(manifest, dict) or ('scripts_initialized' in manifest and
+                    type(manifest['scripts_initialized']) is not bool):
+                raise ValueError('Invalid backup manifest')
             from .config_storage import validate_settings
             validate_settings(settings)
             scripts = {e.filename[len('scripts/'):]: {'source': archive.read(e).decode('utf-8')}

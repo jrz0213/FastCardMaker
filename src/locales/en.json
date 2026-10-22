@@ -807,5 +807,6 @@
   "已用文本编辑器打开脚本。保存文件后，下次发送或调试会重新读取。": "Opened the script in a text editor. Save the file; it will be reread before the next request or debug run.",
   "无法打开文本编辑器，请检查脚本文件和本机编辑器。": "Could not open a text editor. Check the script file and installed editor.",
   "文件和当前预览都已修改，请先处理这两个版本，再继续发送或调试。": "Both the file and preview have changed. Resolve the two versions before sending or debugging.",
-  "无法读取编辑后的脚本：": "Could not read the edited script: "
+  "无法读取编辑后的脚本：": "Could not read the edited script: ",
+  "自动备份：保存修改后，将 AI 配置和当前 Python 脚本更新到媒体库 ZIP，随 Anki 媒体同步。手动备份：AI 配置和脚本只保存到本机，使用导入／导出 ZIP 自行传递。普通设置、字段配置和脚本勾选状态始终保存在媒体配置中。\n\n词典路径、MDX／MDD 文件、词典附带 JS、对话记录和回收站中的旧脚本不进入备份。旧脚本仅在本机保留七天，恢复为当前脚本后才参与备份。\n\nAPI Key 只保存在本机系统凭证库，不参与同步和备份；换设备后重新填写。导入缺少密钥的备份不会清空已有密钥。导出只包含已保存的配置，当前页面的修改需要先点击确定保存。": "Automatic backup: saved AI settings and current Python scripts update the media ZIP and sync with Anki media. Manual backup: AI settings and scripts stay local; use ZIP import/export. Ordinary preferences, field mappings and script selections always stay in the media configuration.\n\nDictionary paths, MDX/MDD files, dictionary JavaScript, conversations and recycled scripts are excluded. Old scripts stay local for seven days and join backups only after restoration.\n\nAPI keys stay local, are managed by the operating system, and are excluded from configuration uploads and sync. Enter keys on another device. Importing a key-free backup does not clear local keys. Export contains saved settings only; save edits with OK first."
 }

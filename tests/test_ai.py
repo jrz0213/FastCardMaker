@@ -197,6 +197,8 @@ class AITests(unittest.TestCase):
         self.assertNotIn('max_tokens', self.profile)
         for provider in ('openai', 'deepseek', 'qwen', 'custom'):
             self.assertEqual(self.settings.new_profile(provider)['mode'], 'responses')
+        self.assertEqual(self.settings.new_profile('qwen')['base_url'],
+                         'https://dashscope.aliyuncs.com/compatible-mode/v1/responses')
         self.assertEqual(self.settings.new_profile('gemini')['mode'], 'interactions')
         self.assertEqual(self.settings.new_profile('claude')['mode'], 'messages')
 

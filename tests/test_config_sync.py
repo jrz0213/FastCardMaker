@@ -46,6 +46,24 @@ class ConfigSyncTests(unittest.TestCase):
         self.assertIn('保留.py', backup.read_bundle()['scripts'])
         self.assertNotIn('123', backup.read_bundle()['settings'])
 
+    def test_malformed_backup_manifest_is_rejected_without_overwriting_archive(self):
+        import zipfile
+        backup = self.host.load('utils.backup_store')
+        target = self.media.parent / 'malformed.zip'
+        target.parent.mkdir(parents=True, exist_ok=True)
+        for manifest in ([], None, 1, {'scripts_initialized': 'false'},
+                         {'scripts_initialized': 1}):
+            with self.subTest(manifest=manifest):
+                with zipfile.ZipFile(target, 'w') as archive:
+                    archive.writestr('manifest.json', json.dumps(manifest))
+                    archive.writestr('settings.json', '{}')
+                original = target.read_bytes()
+                with self.assertRaises(ValueError):
+                    backup.read_bundle(target)
+                with self.assertRaises(ValueError):
+                    backup.write_bundle(target, settings={})
+                self.assertEqual(target.read_bytes(), original)
+
     def test_creating_settings_archive_does_not_mean_empty_script_backup(self):
         backup = self.host.load('utils.backup_store')
         self.config.update({'dicts': {}})

@@ -249,7 +249,7 @@ class DictManageDialog(Dialog):
             QPushButton:disabled { color: palette(mid); }
         """
 
-        edit_btn = QPushButton(tr("📝 编辑脚本"))
+        edit_btn = QPushButton(tr('编辑脚本'))
         edit_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         edit_btn.setStyleSheet(btn_style)
 
@@ -312,7 +312,9 @@ class DictManageDialog(Dialog):
             'script_paths': kwargs.get('script_paths', [path] if path else []),
             'script_file': kwargs.get('script_file') or (Path(path).name if path else ''),
         }
-        delete_btn = QPushButton(tr('删除'))
+        delete_btn = QPushButton('×')
+        delete_btn.setToolTip(tr('删除脚本'))
+        delete_btn.setAccessibleName(tr('删除脚本'))
         delete_btn.setStyleSheet(btn_style)
         delete_btn.setVisible(bool(path or row['script_file'] or missing))
         delete_btn.clicked.connect(lambda checked=False, item=row: self.delete_dictionary(item))

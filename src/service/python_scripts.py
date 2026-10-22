@@ -26,7 +26,10 @@ For an explanatory question without a code change you may answer in plain text.
 Treat earlier replies and local debug reports as reference observations. Follow the
 latest user request and current output format, not an older JSON/Python format.
 Network timeouts and authentication failures do not imply a parser bug; do not modify
-working extraction logic to fix connectivity. Return complete code for any code update.'''
+working extraction logic to fix connectivity. Return complete code for any code update.
+local_information is local validation/debug data attached to the current request,
+not an earlier conversation turn. source_reference and generated_script_reference
+identify an identical script in the selected history or current attachments; reuse it.'''
 
 
 def parse_python(response, class_name=None):

@@ -4,6 +4,7 @@ from aqt.qt import *
 from ...translations import text as tr
 from ...service.ai_config import PRESETS
 from ...service.ai_keys import key_store_path
+from ...service.ai_support.parameters import INTERFACE_FORMATS
 from ..model_input import ModelInput
 from ..flow_layout import FlowLayout
 from ..help_widgets import with_help
@@ -44,6 +45,10 @@ def build_settings_layout(self):
     # Retain the internal value for old profile handling; the URL selects it.
     self.mode.setParent(self)
     self.mode.hide()
+    self.interface_format = QComboBox()
+    for value, label in INTERFACE_FORMATS.items():
+        self.interface_format.addItem(label, value)
+    self.interface_format.currentIndexChanged.connect(self.interface_changed)
     self.send_mode = QComboBox()
     self.send_mode.addItem(tr('逐字段发送（默认）'), 'field')
     self.send_mode.addItem(tr('按笔记合并发送'), 'note')
@@ -58,6 +63,14 @@ def build_settings_layout(self):
                 'API Key 点击确定后保存到本机系统凭证库，换设备后重新填写。'
                 '切换字段的 AI 连接不会修改该字段的提示词。'))
         basic_form.addRow(label, widget)
+    self.interface_label = QLabel(tr('接口格式'))
+    self.interface_row = with_help(self.interface_format, tr('接口格式说明'), tr(
+        '选择服务器支持的 Chat Completions、Responses 或 Messages。标准地址后缀可自动识别，特殊路径按所选格式发送。'
+        '这决定请求、认证和回复的结构，不会让不支持的服务器自动兼容。\n\n'
+        '历史对话仅用于词典脚本生成与修改，按当前窗口的全部／勾选消息发送。普通 AI 制卡不携带历史，不使用会话 ID。'))
+    basic_form.addRow(self.interface_label, self.interface_row)
+    self.interface_label.hide()
+    self.interface_row.hide()
     self.send_hint = QLabel()
     self.send_hint.setWordWrap(True)
     self.send_hint.setParent(self)

@@ -20,6 +20,44 @@ import test_modularization as support
 
 @unittest.skipUnless(importlib.util.find_spec('PyQt6'), 'PyQt6 is not installed')
 class GuiRuntimeTests(unittest.TestCase):
+    def test_custom_interface_format_is_visible_persisted_and_preserves_custom_parameters(self):
+        settings = self.load('gui.ai_settings')
+        dialog = settings.AISettingsDialog(None)
+        self.widgets.append(dialog)
+        self.assertEqual(dialog.provider.currentData(), 'custom')
+        self.assertFalse(dialog.interface_row.isHidden())
+        self.assertEqual([dialog.interface_format.itemData(i) for i in range(dialog.interface_format.count())],
+                         ['chat', 'responses', 'messages'])
+        dialog.address.setText('https://example.test/special-path')
+        dialog.name.setText('Custom test')
+        dialog.model.setText('test-model')
+        dialog.parameters.setPlainText('{"top_p": 0.8}')
+        dialog.interface_format.setCurrentIndex(dialog.interface_format.findData('messages'))
+        self.assertEqual(dialog.mode.currentData(), 'messages')
+        self.assertEqual(json.loads(dialog.parameters.toPlainText()), {'top_p': 0.8})
+        dialog.accept()
+        reopened = settings.AISettingsDialog(None)
+        self.widgets.append(reopened)
+        self.assertEqual(reopened.interface_format.currentData(), 'messages')
+        self.assertEqual(reopened.address.text(), 'https://example.test/special-path')
+        reopened.provider.setCurrentIndex(reopened.provider.findData('deepseek'))
+        self.assertTrue(reopened.interface_row.isHidden())
+
+    def test_custom_interface_auto_detects_standard_path_but_does_not_override_manual_selection_on_save(self):
+        settings = self.load('gui.ai_settings')
+        dialog = settings.AISettingsDialog(None)
+        self.widgets.append(dialog)
+        dialog.address.setText('https://example.test/v1/chat/completions')
+        dialog.address_edited()
+        self.assertEqual(dialog.interface_format.currentData(), 'chat')
+        dialog.model.setText('test-model')
+        dialog.interface_format.setCurrentIndex(dialog.interface_format.findData('messages'))
+        with patch.object(settings.QMessageBox, 'warning') as warning:
+            dialog.accept()
+        warning.assert_called_once()
+        self.assertIn('不一致', warning.call_args.args[-1])
+        self.assertEqual(dialog.interface_format.currentData(), 'messages')
+
     def test_vault_failure_cannot_erase_credentials_and_retry_recovers(self):
         settings = self.load('gui.ai_settings')
         ai = self.load('service.ai_config')

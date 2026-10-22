@@ -13,7 +13,7 @@ Start with a few notes before running a larger batch. Screenshots use example fi
 Open **FastCM → Options → AI settings**:
 
 1. Click **Add profile** and choose a **Provider preset**. Presets are available for OpenAI (ChatGPT), Claude, Gemini, DeepSeek and Qwen. For another compatible service, choose Custom.
-2. Give the profile a recognizable name.
+2. Give the profile a recognizable name. For Custom services, choose **Interface format**: Chat Completions, Responses or Messages. Standard endpoint paths are detected automatically; special paths use your selected format, which must match the server.
 3. Enter the **API address**, **API key** and **Model**. The address must include the endpoint path, such as `https://api.deepseek.com/responses`. Preset URLs are editable; use a model supported by your service.
 4. Optionally enter shared instructions in **Skill**, such as “Explain clearly and include a concrete example.” Click **OK** to save.
 
@@ -159,11 +159,11 @@ Direct Python output receives syntax and structure checks during generation. Cli
 
 ![Messages, debug results and follow-up input](images/user-guide/en-script-information.png)
 
-- **Include all messages** is selected by default. **Include checked messages** sends only history checked on the right. New messages start unchecked; select individual debug reports when you want AI to consider them.
+- **Include all messages** is selected by default. **Include checked messages** carries only checked items; new messages start unchecked. User and AI messages form the ordered conversation history. Debug reports and other local information are attached to the current request. Old attachments are not recursively repeated, and identical scripts in history and current attachments use references instead of duplicate source text.
 - Messages show timestamps and fold after five lines. Use **Expand / Collapse** after a message. Check messages to **Copy selected content**, or use **Copy all / Export Markdown**.
 - **Import conversation** reads TXT or Markdown as reference context. Messages are not saved automatically; export before closing if you want to keep them.
 
-The history selection applies both to **Send message** and to generating from the three entries again. History and source code increase token use. For long conversations, include fewer checked messages or close the window and start again. Review each AI revision and **Save script** to apply it.
+The history selection applies both to **Send message** and to generating from the three entries again. Ordinary AI flashcard generation does not carry this conversation history. History and source code increase token use. For long conversations, include fewer checked messages or close the window and start again. Review each AI revision and **Save script** to apply it.
 
 ### Choose script versions and restore an earlier one
 

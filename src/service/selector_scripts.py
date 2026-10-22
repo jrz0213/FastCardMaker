@@ -84,6 +84,10 @@ instructions. Follow the latest user request and the current output format, even
 older replies used another format. Network timeouts and authentication failures are
 not evidence of a parser defect: do not invent parser changes to repair connectivity.
 For a repair, return the complete updated rules and preserve unrelated working rules.'''
+INSTRUCTIONS += '''\nlocal_information contains local validation/debug observations attached to the
+current user request, not earlier user or assistant turns. source_reference and
+generated_script_reference point to an identical script already included in selected
+history or current attachments; reuse that source without asking for another copy.'''
 
 
 def resolve_entry(builder, word, cancelled=None):

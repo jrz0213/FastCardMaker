@@ -8,7 +8,7 @@ from ..base import Dialog
 from .layout import build_settings_layout
 from ...service.ai_config import PRESETS, new_profile, profiles, save_profiles, session_key
 import json
-from ...service.ai_support.parameters import parameters_for, defaults as parameter_defaults, endpoint, protocol
+from ...service.ai_support.parameters import parameters_for, defaults as parameter_defaults, endpoint, protocol, endpoint_protocol
 from ...service.ai_keys import key_store_path
 
 
@@ -83,12 +83,18 @@ class AISettingsDialog(Dialog):
     def capture(self):
         if self.current < 0:
             return
+        if self.provider.currentData() == 'custom' and self.address.text().strip() != getattr(self, '_format_address', ''):
+            self.address_edited()
         item = self.items[self.current]
         item.update(name=self.name.text().strip(), provider=self.provider.currentData(),
                     base_url=self.address.text().strip(),
                     model=self.model.text().strip(), mode=self.mode.currentData(),
                     parameters=self.parameters.toPlainText(), endpoint_url=True,
                     skill=self.skill.toPlainText(), send_mode=self.send_mode.currentData())
+        if item['provider'] == 'custom':
+            item['interface_format'] = self.interface_format.currentData()
+        else:
+            item.pop('interface_format', None)
         item.pop('max_tokens', None)
         self.keys[item['id']] = self.key.text().strip()
         self.update_name(item['name'])
@@ -107,26 +113,41 @@ class AISettingsDialog(Dialog):
             widget.setText(endpoint(item) if key == 'base_url' else item.get(key, ''))
         self.model.set_provider(item['provider'], item.get('model', ''))
         self.key.setText(self.keys.get(item['id'], ''))
-        self.mode.setCurrentIndex(max(0, self.mode.findData(item['mode'])))
+        try:
+            mode = protocol(item)
+        except ValueError:
+            mode = item.get('mode', 'responses')
+        self.mode.setCurrentIndex(max(0, self.mode.findData(mode)))
+        self.interface_format.setCurrentIndex(max(0, self.interface_format.findData(mode)))
         self.send_mode.setCurrentIndex(max(0, self.send_mode.findData(item.get('send_mode', 'field'))))
         params = item['parameters'] if 'parameters' in item else parameters_for(item)
         self.parameters.setPlainText(params if isinstance(params, str) else json.dumps(params, ensure_ascii=False, indent=2))
         self.skill.setPlainText(item.get('skill', ''))
         self._parameter_mode = self.mode.currentData()
+        self._format_address = self.address.text().strip()
         self.loading = False
         self.refresh_options()
 
     def address_edited(self):
-        try:
-            mode = protocol(dict(base_url=self.address.text().strip(), endpoint_url=True))
-        except ValueError:
+        self._format_address = self.address.text().strip()
+        mode = endpoint_protocol(self.address.text().strip())
+        if mode is None:
             return  # Report incomplete/unsupported addresses when saving.
+        if self.provider.currentData() == 'custom' and mode != 'interactions':
+            self.interface_format.setCurrentIndex(self.interface_format.findData(mode))
         self.mode.setCurrentIndex(self.mode.findData(mode))
+
+    def interface_changed(self, *_):
+        if not self.loading and self.provider.currentData() == 'custom':
+            self._format_address = self.address.text().strip()
+            self.mode.setCurrentIndex(self.mode.findData(self.interface_format.currentData()))
 
     def refresh_options(self, *_):
         if self.loading:
             return
         provider = self.provider.currentData()
+        self.interface_label.setVisible(provider == 'custom')
+        self.interface_row.setVisible(provider == 'custom')
         mode = self.mode.currentData()
         previous = getattr(self, '_parameter_mode', mode)
         if previous != mode:
@@ -146,7 +167,9 @@ class AISettingsDialog(Dialog):
             'gemini': tr('Gemini 默认使用官方 Interactions；generation_config 中填写 temperature 和 thinking_level。minimal 不等于关闭思考，支持范围取决于模型。'),
             'claude': tr('Claude 默认使用官方 Messages；max_tokens 是输出上限，thinking.type=disabled 是关闭思考的示例。'),
         }
-        self.hint.setText(notes.get(provider, tr('Responses 使用 reasoning.effort；Chat 使用 reasoning_effort。')) +
+        fallback = (tr('Messages 使用 system 和 messages；输出上限使用 max_tokens，其他参数以服务器说明为准。')
+                    if mode == 'messages' else tr('Responses 使用 reasoning.effort；Chat 使用 reasoning_effort。'))
+        self.hint.setText(notes.get(provider, fallback) +
                           '\n' + tr('预填参数仅为示例，不同模型支持范围不同，可自由增删；JSON 中不要写备注。限速、重试及超时在插件设置的 AI 设置中调整。'))
 
     def apply_preset(self):
@@ -158,8 +181,10 @@ class AISettingsDialog(Dialog):
         # A provider change must never reuse the previous provider's credential.
         self.key.clear()
         self.mode.setCurrentIndex(self.mode.findData(mode))
+        self.interface_format.setCurrentIndex(max(0, self.interface_format.findData(mode)))
         self.parameters.setPlainText(json.dumps(parameter_defaults(self.provider.currentData(), mode), ensure_ascii=False, indent=2))
         self._parameter_mode = mode
+        self._format_address = self.address.text().strip()
         self.loading = False
         self.refresh_options()
 
@@ -194,7 +219,8 @@ class AISettingsDialog(Dialog):
         if self._keys_locked:
             QMessageBox.warning(self, tr('AI 配置未保存'), tr('无法读取系统凭证，请先允许系统访问并重试。原配置未更改。'))
             return
-        self.address_edited()
+        if self.provider.currentData() != 'custom':
+            self.address_edited()
         self.capture()
         try:
             save_profiles(self.items, self.keys)

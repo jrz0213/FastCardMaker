@@ -19,7 +19,7 @@ PRESETS = {
     'claude': ('Claude', 'https://api.anthropic.com/v1/messages', 'messages'),
     'custom': (tr('自定义'), '', 'responses'),
 }
-PROFILE_FIELDS = ('id', 'name', 'provider', 'base_url', 'mode', 'model',
+PROFILE_FIELDS = ('id', 'name', 'provider', 'base_url', 'mode', 'model', 'interface_format',
                   'temperature', 'reasoning', 'timeout', 'connect_timeout', 'retries',
                   'skill', 'skill_role', 'responses_store', 'send_mode', 'parameters', 'endpoint_url')
 _session_keys = {}

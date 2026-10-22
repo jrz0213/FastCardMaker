@@ -53,10 +53,11 @@ class ScriptOperationThread(ServiceLoaderThread):
 class Generation:
     def __init__(self, path, unique, words, names, command='', attachments=None, script_paths=None, class_name=None,
                  history=None, message='', current=None, debug=False, record_directory=None, debug_result=None, session_id=None,
-                 return_json=True):
+                 return_json=True, local_information=None):
         self.path, self.unique, self.words, self.names = path, unique, words, names
         self.command, self.message = command, message
         self.history, self.current = deepcopy(history or []), deepcopy(current)
+        self.local_information = deepcopy(local_information or [])
         self.debug, self.debug_result = debug, deepcopy(debug_result)
         self.record_directory, self.on_prepared = record_directory, None
         self.session_id = session_id
@@ -117,15 +118,17 @@ class Generation:
                                                javascript_found=any('content' in item for item in javascript))
             if self.message:
                 prompt_data['user_message'] = self.message
-                if self.current:
-                    prompt_data['current_rules'] = self.current['rules']
-                    if self.attachments['script']:
-                        source = self.current['source']
-                        current_script = {'name': self.current['filename'], 'source': source[:60000], 'truncated': len(source) > 60000}
-                        prompt_data['current_script'] = current_script
-                        prompt_data['original_scripts'] = [s for s in prompt_data['original_scripts'] if s['source'] != current_script['source']]
                 if self.debug_result:
                     prompt_data['latest_debug'] = debug_feedback(self.debug_result)
+            if self.current:
+                prompt_data['current_rules'] = self.current['rules']
+                if self.attachments['script']:
+                    source = self.current['source']
+                    prompt_data['current_script'] = {'name': self.current['filename'], 'source': source[:60000], 'truncated': len(source) > 60000}
+            if self.local_information:
+                prompt_data['local_information'] = deepcopy(self.local_information)
+            from ..service.script_information import deduplicate_scripts
+            prompt_data = deduplicate_scripts(prompt_data, self.history)
             prompt_data = redact(prompt_data, self.connection.key)
             from ..service.script_information import hide_local_paths
             prompt_data = hide_local_paths(prompt_data, self.path)
@@ -450,7 +453,7 @@ class ScriptGeneratorDialog(Dialog):
                                message=message, current=self.result, debug=False,
                                record_directory=None,
                                debug_result=None, session_id=self.session_id,
-                               return_json=self.return_json.isChecked())
+                               return_json=self.return_json.isChecked(), local_information=self.selected_local_information())
         self._secret_values.add(operation.connection.key)
         loader = self.loader = ScriptOperationThread(operation)
         loader.prepared.connect(self.request_started)
@@ -652,21 +655,14 @@ class ScriptGeneratorDialog(Dialog):
             self.status.setText(tr('请先选择要复制的对话内容。'))
 
     def selected_history(self):
-        """Keep ordered role-level selections; attachments are sent in the current request only."""
-        messages = []
-        for key, (label, content) in self._message_contents.items():
-            if self.send_selected.isChecked() and key not in self._selected_messages:
-                continue
-            index, role = key.split('-', 1)
-            record = self.conversations[int(index)]
-            if role == 'assistant' and not record.get('response'):
-                continue
-            if role == 'user' and record.get('kind', 'request') == 'request':
-                content = str(record.get('user_message') or record.get('request', {}).get('user_command', ''))
-            if role in ('debug', 'local'):
-                content = label + ':\n' + content
-            messages.append({'role': 'assistant' if role == 'assistant' else 'user', 'content': content})
-        return messages
+        return self.selected_context()[0]
+
+    def selected_local_information(self):
+        return self.selected_context()[1]
+
+    def selected_context(self):
+        from ..service.script_information import selected_context
+        return selected_context(self.conversations, self._selected_messages if self.send_selected.isChecked() else None)
 
     def copy_information(self, *_, all_records=False):
         records = self.conversations if all_records else self.conversations[-1:]

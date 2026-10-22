@@ -4,6 +4,17 @@ from urllib.parse import urlsplit
 from copy import deepcopy
 from ...translations import text as tr
 
+INTERFACE_FORMATS = {'chat': 'Chat Completions', 'responses': 'Responses', 'messages': 'Messages'}
+
+
+def endpoint_protocol(address):
+    path = urlsplit(address).path.rstrip('/')
+    for suffix, mode in (('/responses', 'responses'), ('/chat/completions', 'chat'),
+                         ('/interactions', 'interactions'), ('/messages', 'messages')):
+        if path.endswith(suffix):
+            return mode
+    return None
+
 
 def defaults(provider, mode):
     if mode == 'interactions':
@@ -77,10 +88,16 @@ def endpoint(profile):
 
 
 def protocol(profile):
-    """The endpoint decides the wire format, including legacy saved profiles."""
-    path = urlsplit(endpoint(profile)).path.rstrip('/')
-    for suffix, mode in (('/responses', 'responses'), ('/chat/completions', 'chat'),
-                         ('/interactions', 'interactions'), ('/messages', 'messages')):
-        if path.endswith(suffix):
-            return mode
+    """Explicit custom format wins; otherwise infer from the full endpoint."""
+    chosen = profile.get('interface_format')
+    if profile.get('provider') == 'custom' and chosen:
+        if chosen not in INTERFACE_FORMATS:
+            raise ValueError(tr('请选择有效的接口格式。'))
+        detected = endpoint_protocol(endpoint(profile))
+        if detected and detected != chosen:
+            raise ValueError(tr('接口格式与 API 地址后缀不一致，请修改格式或地址。'))
+        return chosen
+    detected = endpoint_protocol(endpoint(profile))
+    if detected:
+        return detected
     raise ValueError(tr('无法识别接口地址，请填写以 /responses、/chat/completions、/interactions 或 /messages 结尾的完整地址。'))

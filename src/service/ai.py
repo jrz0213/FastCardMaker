@@ -18,6 +18,7 @@ from .ai_limits import AIRequestLimiter
 from .ai_support.parameters import parameters_for, endpoint, protocol
 from .ai_support import diagnostics
 from .ai_support.retry import retry_delay
+from .ai_support.conversation import ADAPTERS
 from .ai_support.batching import OUTPUT_INSTRUCTIONS, build_prompt, parse_fields
 
 _requests_limit = AIRequestLimiter()
@@ -86,12 +87,8 @@ def request_payload(profile, prompt, output_instructions='', history=None):
     skill = profile.get('skill', '').strip()
     if output_instructions:
         skill = '\n\n'.join(filter(None, (skill, output_instructions)))
-    if mode == 'responses':
-        data.update(input=prompt, store=bool(profile.get('responses_store', False)))
-        if history:
-            data['input'] = list(history) + [{'role': 'user', 'content': prompt}]
-        if skill:
-            data['instructions'] = skill
+    if mode in ADAPTERS:
+        data.update(ADAPTERS[mode](profile, prompt, skill, history))
     elif mode == 'interactions':
         # Stateless text queries: include the full visible transcript as context.
         # Never fabricate model_output steps without Google's thought signatures.
@@ -101,19 +98,6 @@ def request_payload(profile, prompt, output_instructions='', history=None):
         data.update(input=prompt, store=False, stream=False)
         if skill:
             data['system_instruction'] = skill
-    elif mode == 'messages':
-        data.update(messages=list(history or []) + [{'role': 'user', 'content': prompt}],
-                    stream=False, max_tokens=4096)
-        if skill:
-            data['system'] = skill
-    else:
-        data.update(messages=list(history or []) + [{'role': 'user', 'content': prompt}],
-                    stream=False)
-        if skill:
-            role = profile.get('skill_role', '')
-            if not role:
-                role = 'system'
-            data['messages'].insert(0, {'role': role, 'content': skill})
     data.update(parameters_for(profile))
     return data
 

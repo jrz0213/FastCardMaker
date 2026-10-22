@@ -3,6 +3,8 @@ from copy import deepcopy
 from datetime import datetime, timezone
 import json
 import uuid
+import hashlib
+import re
 from pathlib import Path
 
 
@@ -43,6 +45,69 @@ def request_record(model, instructions, request, payload, user_message, dictiona
             'dictionary_id': dictionary_id, 'model': model, 'instructions': instructions,
             'user_message': user_message, 'request': request, 'payload': payload,
             'response': '', 'state': 'sending', 'local': {}}
+
+
+def selected_context(records, selected=None):
+    """Conversation turns stay in history; local observations are current attachments."""
+    history, information = [], []
+    for index, record in enumerate(records):
+        kind = record.get('kind', 'request')
+        chosen = lambda role: selected is None or '%s-%s' % (index, role) in selected
+        if kind == 'request':
+            if chosen('user'):
+                history.append({'role': 'user', 'content': str(record.get('user_message') or
+                    record.get('request', {}).get('user_command', ''))})
+            if record.get('response') and chosen('assistant'):
+                history.append({'role': 'assistant', 'content': str(record['response'])})
+            if record.get('local') and chosen('local'):
+                information.append({'id': record.get('id', str(index)), 'kind': 'local',
+                    'time': record.get('time', ''), 'data': deepcopy(record['local'])})
+        elif kind == 'context':
+            if chosen('user'):
+                history.append({'role': 'user', 'content': str(record.get('content', ''))})
+        elif chosen('debug' if kind == 'debug' else 'local'):
+            information.append({'id': record.get('id', str(index)), 'kind': kind,
+                'time': record.get('time', ''), 'data': deepcopy(record)})
+    return history, information
+
+
+def deduplicate_scripts(request, history):
+    """Keep one exact copy of a script, retaining references at every other location."""
+    value = deepcopy(request)
+    known = {}
+    def fingerprint(source):
+        return hashlib.sha256(source.strip().encode('utf-8')).hexdigest()
+    for index, turn in enumerate(history):
+        if turn.get('role') != 'assistant':
+            continue
+        content = turn.get('content', '')
+        source = content
+        try:
+            parsed = json.loads(content)
+            source = parsed.get('code', '') if isinstance(parsed, dict) else ''
+        except (ValueError, TypeError):
+            fence = re.fullmatch(r'```(?:python|py)?\s*\n([\s\S]*?)\n```', content.strip())
+            source = fence.group(1) if fence else content
+        if isinstance(source, str) and source.strip():
+            known[fingerprint(source)] = 'history[%s].content' % index
+    def source_once(item, key, location):
+        source = item.get(key)
+        if not isinstance(source, str) or not source.strip():
+            return
+        digest = fingerprint(source)
+        if digest in known:
+            item.pop(key)
+            item[key + '_reference'] = {'sha256': digest, 'location': known[digest]}
+        else:
+            known[digest] = location + '.' + key
+    if isinstance(value.get('current_script'), dict):
+        source_once(value['current_script'], 'source', 'current_script')
+    for index, item in enumerate(value.get('original_scripts', [])):
+        source_once(item, 'source', 'original_scripts[%s]' % index)
+    for index, item in enumerate(value.get('local_information', [])):
+        if isinstance(item.get('data'), dict):
+            source_once(item['data'], 'generated_script', 'local_information[%s].data' % index)
+    return value
 
 
 def compact_history(records):

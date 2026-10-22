@@ -23,6 +23,45 @@ import test_modularization as support
 
 @unittest.skipUnless(real_soup and importlib.util.find_spec('PyQt6'), 'Qt/BeautifulSoup not installed')
 class ScriptGenerationTests(unittest.TestCase):
+    def test_third_turn_splits_local_feedback_and_deduplicates_current_script(self):
+        information = self.host.load('service.script_information')
+        source = 'def parser():\n    return "value"\n'
+        first_reply = json.dumps({'message': 'script one', 'code': source})
+        second_reply = json.dumps({'message': 'explanation only'})
+        records = [
+            {'id': 'one', 'kind': 'request', 'user_message': 'first question', 'response': first_reply,
+             'request': {'samples': [{'html': 'never repeat this old attachment'}]},
+             'local': {'validation': 'passed', 'generated_script': source}},
+            {'id': 'debug-one', 'kind': 'debug', 'error': 'missing-image-unique'},
+            {'id': 'two', 'kind': 'request', 'user_message': 'second question', 'response': second_reply,
+             'request': {'local_information': [{'error': 'must not recursively repeat'}]}}
+        ]
+        history, notes = information.selected_context(records)
+        self.assertEqual([turn['role'] for turn in history], ['user', 'assistant', 'user', 'assistant'])
+        self.assertEqual([turn['content'] for turn in history], ['first question', first_reply, 'second question', second_reply])
+        self.assertEqual(len(notes), 2)
+        request = information.deduplicate_scripts({'user_message': 'third question',
+            'current_script': {'source': source}, 'original_scripts': [{'name': 'parser.py', 'source': source}],
+            'local_information': notes}, history)
+        self.assertNotIn('source', request['current_script'])
+        self.assertNotIn('source', request['original_scripts'][0])
+        self.assertNotIn('generated_script', request['local_information'][0]['data'])
+        for mode in ('chat', 'responses', 'messages'):
+            profile = dict(self.host.load('service.ai_config').new_profile('custom'), model='test',
+                base_url='https://example.test/custom', interface_format=mode)
+            payload = self.host.load('service.ai').request_payload(profile, json.dumps(request), history=history)
+            turns = payload['input' if mode == 'responses' else 'messages']
+            self.assertEqual(len(turns), 5)
+            self.assertEqual(sum(turn['content'] == first_reply for turn in turns), 1)
+            self.assertEqual(json.dumps(payload).count('missing-image-unique'), 1)
+            self.assertNotIn('never repeat this old attachment', json.dumps(payload))
+            self.assertNotIn('must not recursively repeat', json.dumps(payload))
+        selected_history, selected_notes = information.selected_context(records, {'0-assistant', '1-debug'})
+        self.assertEqual(selected_history, [{'role': 'assistant', 'content': first_reply}])
+        self.assertEqual(len(selected_notes), 1)
+        self.assertEqual(selected_notes[0]['kind'], 'debug')
+        self.assertEqual(information.selected_context(records, set()), ([], []))
+
     def test_generation_and_chat_both_respect_history_selection(self):
         module = self.host.load('gui.script_generator')
         for chat in (False, True):

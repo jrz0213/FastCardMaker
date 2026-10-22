@@ -11,6 +11,61 @@ import test_modularization as support
 
 
 class AITests(unittest.TestCase):
+    def test_custom_format_survives_save_and_controls_request_and_authentication(self):
+        ai = self.load('service.ai')
+        for mode in ('chat', 'responses', 'messages'):
+            with self.subTest(mode=mode):
+                profile = dict(self.settings.new_profile('custom'), model='test',
+                    base_url='https://example.test/special-endpoint', interface_format=mode)
+                self.settings.save_profiles([profile], {profile['id']: 'test-key'})
+                saved = self.settings.profiles()[0]
+                self.assertEqual(saved['interface_format'], mode)
+                self.assertEqual(saved['mode'], mode)
+                connection = ai.AIConnection(saved, 'test-key')
+                history = [{'role': 'user', 'content': 'previous question'},
+                           {'role': 'assistant', 'content': 'previous answer'}]
+                data = {'chat': {'choices': [{'finish_reason': 'stop', 'message': {'content': 'ok'}}]},
+                        'responses': {'status': 'completed', 'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'ok'}]}]},
+                        'messages': {'type': 'message', 'stop_reason': 'end_turn', 'content': [{'type': 'text', 'text': 'ok'}]}}[mode]
+                response = Mock(status_code=200)
+                response.json.return_value = data
+                with patch.object(ai, '_send', return_value=response) as send:
+                    self.assertEqual(ai.request_ai_text('unused', 'current question', 'instructions', connection=connection, history=history), 'ok')
+                address, headers, payload = send.call_args.args[:3]
+                self.assertEqual(address, profile['base_url'])
+                turns = payload['input' if mode == 'responses' else 'messages']
+                self.assertEqual(turns[-3:], history + [{'role': 'user', 'content': 'current question'}])
+                self.assertEqual(headers['x-api-key' if mode == 'messages' else 'Authorization'],
+                                 'test-key' if mode == 'messages' else 'Bearer test-key')
+
+    def test_custom_format_rejects_conflicts_with_standard_endpoint_suffix(self):
+        params = self.load('service.ai_support.parameters')
+        for chosen in ('chat', 'responses', 'messages'):
+            item = dict(self.profile, provider='custom', interface_format=chosen,
+                        base_url='https://example.test/v1/responses')
+            if chosen == 'responses':
+                self.assertEqual(params.protocol(item), 'responses')
+            else:
+                with self.assertRaises(ValueError):
+                    params.protocol(item)
+
+    def test_normal_card_generation_does_not_reuse_parser_conversation(self):
+        ai = self.load('service.ai')
+        for mode in ('chat', 'responses', 'messages'):
+            profile = dict(self.profile, provider='custom', interface_format=mode,
+                           base_url='https://example.test/custom')
+            connection = ai.AIConnection(profile, 'test-key')
+            history = [{'role': 'user', 'content': 'parser-only-context'}]
+            ai.request_payload(profile, 'parse dictionary', history=history)
+            with patch.object(ai, '_send') as send, patch.object(ai, 'render_prompt', return_value='current note'):
+                send.return_value = Mock(status_code=200)
+                send.return_value.json.return_value = {
+                    'chat': {'choices': [{'finish_reason': 'stop', 'message': {'content': 'ok'}}]},
+                    'responses': {'status': 'completed', 'output': [{'type': 'message', 'content': [{'type': 'output_text', 'text': 'ok'}]}]},
+                    'messages': {'type': 'message', 'stop_reason': 'end_turn', 'content': [{'type': 'text', 'text': 'ok'}]}}[mode]
+                ai.query_ai('unused', 'prompt', {}, connection=connection)
+            self.assertNotIn('parser-only-context', json.dumps(send.call_args.args[2]))
+
     def test_transport_failures_are_distinct_safe_and_not_retried(self):
         ai = self.load('service.ai')
         requests = sys.modules['requests']

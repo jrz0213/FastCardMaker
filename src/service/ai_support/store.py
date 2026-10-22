@@ -1,4 +1,4 @@
-"""AI metadata in ZIP; complete API keys in the operating system vault."""
+"""AI settings in a local file; complete API keys in the OS vault."""
 import json
 import os
 from copy import deepcopy

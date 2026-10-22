@@ -111,7 +111,7 @@ Under **Plugin settings → General settings → Configuration backup**, choose:
 
 ![General settings and backup controls](images/user-guide/en-general-settings.png)
 
-The ZIP contains only AI connection settings and current Python dictionary scripts. Ordinary preferences, field mappings and script enable flags are saved in the media folder’s `_fastcmcfg.json`, including in manual backup mode. Dictionary paths stay local.
+During normal use, AI settings are read from a local configuration file and dictionary scripts remain `.py` files. Backup packages both into one ZIP. Ordinary preferences, field mappings and script enable flags are saved in the media folder’s `_fastcmcfg.json`, including in manual backup mode. Dictionary paths stay local.
 
 API keys are stored locally and managed by the operating system. They are not uploaded or synced with your configuration.
 

@@ -2202,9 +2202,7 @@ class GuiRuntimeTests(unittest.TestCase):
         self.assertEqual(credentials.session_key(profile_id), 'only-in-memory')
         saved = self.load('service.ai_store').read_settings()
         self.assertEqual(saved['keys'][profile_id], 'only-in-memory')
-        from zipfile import ZipFile
-        with ZipFile(self.load('service.ai_store').settings_path()) as archive:
-            self.assertNotIn(b'only-in-memory', archive.read('settings.json'))
+        self.assertNotIn(b'only-in-memory', self.load('service.ai_store').settings_path().read_bytes())
         self.assertNotIn('api_key', saved['profiles'][0])
         self.assertEqual(saved['requests_per_minute'], 29)
         self.host.config.ai_profiles = []

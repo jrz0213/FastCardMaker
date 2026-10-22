@@ -16,7 +16,7 @@ AI 界面集中在 `gui/ai_ui/`：`settings.py` 管配置切换和保存，`layo
 可同步设置写入媒体文件夹的 `_fastcmcfg.json`，本机工作副本写入用户目录的
 `_fastcm_local.json`。字段映射和脚本勾选状态属于普通媒体配置；词典路径及调度进度仅存本机。
 AI 连接和当前 Python 脚本共同备份至媒体库 `_fastcm_backup.zip`，AI 元数据的本机缓存为
-`fastcm/ai/settings.zip`，不再新建本机 AI JSON。API Key 仅存 Windows 凭据管理器或 macOS
+`fastcm/ai/settings.json`，运行时读取普通配置文件和本机 `.py` 脚本，ZIP 仅作备份。API Key 仅存 Windows 凭据管理器或 macOS
 钥匙串，由 `utils/system_password.py` 访问，不进入配置或 ZIP。`service/ai_support/migration.py`
 检测已知旧配置及备份中的明文 Key，写入系统凭证并读回验证后才清除明文；失败时保留原文件。
 `gui/config_sync.py` 在打开选项前提供本机覆盖媒体、媒体同步到本机及取消三种选择。
@@ -96,6 +96,6 @@ Qt 检查采用 `offscreen` 模式，不显示窗口，也不打开用户的 Ank
 
 ## 可移植脚本与备份
 
-`service/dictionary_binding.py` 以 MDX 文件名优先关联本机目录，内部标题可选，兼容旧路径。`service/script_library.py` 管理本机运行副本，`service/script_backup.py` 按排序后的文件清单比较内容指纹。`utils/backup_store.py` 原子更新包含 AI／字段配置和 Python 脚本的统一 ZIP，基本偏好继续写 JSON；`gui/backup_controls.py` 提供自动／手动备份与 ZIP 导入导出。`gui/script_compare.py` 提供互斥版本选择和只读查看。目录扫描不再同步相邻 Python 文件，也不因移除目录而删除脚本。AI 对话不自动落盘。
+`service/dictionary_binding.py` 以 MDX 文件名优先关联本机目录，内部标题可选，兼容旧路径。`service/script_library.py` 管理本机运行副本，`service/script_backup.py` 按排序后的文件清单比较内容指纹。`utils/backup_store.py` 原子更新包含 AI 配置和 Python 脚本的备份 ZIP，字段配置与基本偏好继续写媒体 JSON；`gui/backup_controls.py` 提供自动／手动备份与 ZIP 导入导出。`gui/script_compare.py` 提供互斥版本选择和只读查看。目录扫描不再同步相邻 Python 文件，也不因移除目录而删除脚本。AI 对话不自动落盘。
 
 `service/python_scripts.py` 定义直接返回 Python 的提示词，静态检查语法和注册类。JSON 模式仍通过可信模板生成脚本；Python 模式不自动执行，手动调试才执行完整代码，属于普通 Python 执行而非沙箱。

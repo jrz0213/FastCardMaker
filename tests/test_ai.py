@@ -143,9 +143,7 @@ class AITests(unittest.TestCase):
         store = self.load('service.ai_keys')
         self.assertEqual(store.key_store_path().parent.parent.parent.name,
                          Path(self.host.mw.pm.profileFolder()).name)
-        from zipfile import ZipFile
-        with ZipFile(store.key_store_path()) as archive:
-            self.assertNotIn(b'memory-only', archive.read('settings.json'))
+        self.assertNotIn(b'memory-only', store.key_store_path().read_bytes())
 
     def test_clear_key_and_delete_profile_remove_saved_credentials(self):
         self.settings.save_profiles([self.profile], {self.profile['id']: 'saved-key'})

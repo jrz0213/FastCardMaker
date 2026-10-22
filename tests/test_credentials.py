@@ -22,9 +22,8 @@ class CredentialTests(unittest.TestCase):
 
     def test_saved_key_is_only_in_system_vault_and_survives_restart(self):
         self.store.write_settings({'profiles': [self.profile], 'keys': {'demo': 'test-secret-value'}})
-        self.assertEqual(self.store.settings_path().suffix, '.zip')
-        with zipfile.ZipFile(self.store.settings_path()) as archive:
-            metadata = archive.read('settings.json').decode()
+        self.assertEqual(self.store.settings_path().suffix, '.json')
+        metadata = self.store.settings_path().read_text(encoding='utf-8')
         self.assertNotIn('test-secret-value', metadata)
         self.assertNotIn('keys', json.loads(metadata))
         self.assertEqual(self.store.read_settings()['keys']['demo'], 'test-secret-value')
@@ -40,6 +39,30 @@ class CredentialTests(unittest.TestCase):
         self.assertNotIn('credential_backup', bundle['settings'])
         with zipfile.ZipFile(destination) as archive:
             self.assertNotIn(b'test-secret', archive.read('settings.json'))
+
+    def test_local_settings_and_backup_are_separate_files(self):
+        self.store.write_settings({'profiles': [self.profile], 'keys': {}})
+        path = self.store.settings_path()
+        edited = json.loads(path.read_text(encoding='utf-8'))
+        edited['profiles'][0]['name'] = 'Edited locally'
+        path.write_text(json.dumps(edited), encoding='utf-8')
+        self.host.config.ai_settings = None
+        self.assertEqual(self.store.read_settings()['profiles'][0]['name'], 'Edited locally')
+        backup = self.load('utils.backup_store')
+        destination = path.parent / 'backup.zip'
+        backup.write_bundle(destination, settings={'ai_settings': edited},
+                            scripts={'demo.py': {'source': 'value = 1\n'}})
+        bundle = backup.read_bundle(destination)
+        self.assertEqual(bundle['settings']['ai_settings'], edited)
+        self.assertEqual(bundle['scripts']['demo.py']['source'], 'value = 1\n')
+        self.assertEqual(json.loads(path.read_text(encoding='utf-8')), edited)
+
+    def test_retired_local_zip_is_not_loaded(self):
+        path = self.store.settings_path().with_suffix('.zip')
+        path.parent.mkdir(parents=True)
+        with zipfile.ZipFile(path, 'w') as archive:
+            archive.writestr('settings.json', json.dumps({'profiles': [self.profile]}))
+        self.assertIsNone(self.load('utils.ai_archive').read_cache())
 
     def test_multiple_api_configs_and_renaming_keep_independent_credentials(self):
         second = dict(self.profile, id='second', name='Work')

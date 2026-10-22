@@ -235,9 +235,7 @@ class ConfigSyncTests(unittest.TestCase):
         self.write_media({'ai_settings': {'profiles': [dict(profile, base_url='https://different.test/responses')]}})
         self.config.resolve_settings('sync')
         self.assertNotIn('demo', store.read_settings()['keys'])
-        from zipfile import ZipFile
-        with ZipFile(store.settings_path()) as archive:
-            self.assertNotIn(b'local-secret', archive.read('settings.json'))
+        self.assertNotIn(b'local-secret', store.settings_path().read_bytes())
 
     def test_first_upgrade_reads_legacy_ai_without_writing_or_deleting_it(self):
         store = self.host.load('service.ai_store')

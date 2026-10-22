@@ -83,7 +83,7 @@ def migrate_plaintext():
     account = Path(mw.pm.profileFolder())
     media = account / 'collection.media'
     paths = {account / '_fastcm_local.json', account / '_fastcm_local.previous.json',
-             cache_path().with_name('config.json'), legacy_keys_path(),
+             cache_path(), cache_path().with_name('config.json'), legacy_keys_path(),
              AI_ROOT / account.name / 'config.json'}
     paths.update(media / name for name in ('_fastcmcfg.json', '.fastcmcfg.json', '_fastwqcfg.json', '.fastwqcfg.json'))
     records = []

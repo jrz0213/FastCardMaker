@@ -25,9 +25,13 @@ AI can work with concepts, questions, study material and vocabulary. Prompts can
 
 AI 可用于概念、问题、学习材料及词汇。提示词支持多个字段，例如 `结合{{主题}}回答{{问题}}`。插件填充已有笔记，卡片显示方式由 Anki 模板决定。
 
-通用设置可选择自动或手动备份。AI 连接、字段配置和 Python 脚本统一保存到 `_fastcm_backup.zip`，词典路径仅存本机。API Key 默认包含，可关闭；脚本差异可逐文件选择本机或备份版本。AI 解析支持 JSON 规则或直接生成 Python，点击问号查看说明。
+通用设置可选择自动或手动备份。AI 连接和 Python 脚本保存到 `_fastcm_backup.zip`，字段配置和勾选状态保存在媒体配置文件，词典路径仅存本机。脚本差异可逐文件选择本机或备份版本。AI 解析支持 JSON 规则或直接生成 Python，点击问号查看说明。
 
-General settings offer automatic or manual backup. AI connections, field mappings and Python parsers share `_fastcm_backup.zip`; dictionary paths stay local. Including API keys is optional and enabled by default. Script conflicts offer per-file version choices. AI parsing supports JSON rules or direct Python output; click **?** for help.
+API Key 保存在本地，由系统统一管理，不会随配置上传或同步。
+
+General settings offer automatic or manual backup. AI connections and Python parsers share `_fastcm_backup.zip`; field mappings and enable flags stay in the media configuration, while dictionary paths stay local. Script conflicts offer per-file version choices. AI parsing supports JSON rules or direct Python output; click **?** for help.
+
+API keys are stored locally and managed by the operating system. They are not uploaded or synced with your configuration.
 
 ## 安装 / Install
 

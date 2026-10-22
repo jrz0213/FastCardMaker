@@ -113,9 +113,7 @@ Under **Plugin settings → General settings → Configuration backup**, choose:
 
 The ZIP contains only AI connection settings and current Python dictionary scripts. Ordinary preferences, field mappings and script enable flags are saved in the media folder’s `_fastcmcfg.json`, including in manual backup mode. Dictionary paths stay local.
 
-API keys are saved only in the local OS credential vault: Windows Credential Manager or macOS Keychain. They are excluded from configuration files, ZIPs and Anki sync. Enter keys again on another computer or OS account; no additional add-on encryption password is required. The field shows the first and last three characters with asterisks between them; keys of six characters or fewer are fully masked, and editing hides the key.
-
-At startup, the add-on checks known legacy settings and media-folder backups for plaintext keys. It saves each key to the OS vault and verifies it by reading it back before removing the plaintext. Failed migrations retain the original file and write a log entry. Importing an older ZIP elsewhere also checks and cleans it. A backup without keys does not clear local credentials; a connection without a key shows “Missing API Key”.
+API keys are stored locally and managed by the operating system. They are not uploaded or synced with your configuration.
 
 In automatic mode, differing settings offer **Overwrite** (local to backup), **Sync** (backup to local) or **Cancel** (keep both for now). Differing scripts use per-file choices, described below.
 

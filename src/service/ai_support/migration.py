@@ -94,6 +94,8 @@ def migrate_plaintext():
             except (OSError, ValueError):
                 logger.warning('Credential migration skipped unreadable configuration: %s', path.name)
     for path in sorted(media.glob('_fastcm_*.zip')):
+        if path.name == '_fastcm_scripts.zip':
+            continue  # Legacy archive contains only root-level .py files, no keys.
         try:
             bundle = read_bundle(path)
             if bundle is not None:

@@ -121,6 +121,21 @@ class CredentialTests(unittest.TestCase):
             self.assertEqual(self.load('service.ai_support.migration').migrate_plaintext(), 0)
         self.assertEqual(backup.read_bytes(), before)
 
+    def test_legacy_scripts_zip_is_not_a_credential_backup_and_still_loads(self):
+        media = Path(self.host.mw.pm.profileFolder()) / 'collection.media'
+        media.mkdir()
+        backup = media / '_fastcm_scripts.zip'
+        with zipfile.ZipFile(backup, 'w') as archive:
+            archive.writestr('legacy.py', 'value = 123\n')
+        before = backup.read_bytes()
+        migration = self.load('service.ai_support.migration')
+        with patch.object(migration.logger, 'warning') as warning:
+            self.assertEqual(migration.migrate_plaintext(), 0)
+        warning.assert_not_called()
+        self.assertEqual(backup.read_bytes(), before)
+        self.assertEqual(self.load('service.script_backup').read_backup(),
+                         {'legacy.py': {'source': 'value = 123\n'}})
+
     @unittest.skipUnless(sys.platform == 'win32', 'Windows API only')
     def test_native_windows_vault_roundtrip_with_throwaway_credential(self):
         system = self.load('utils.system_password')

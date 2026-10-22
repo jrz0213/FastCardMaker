@@ -30,11 +30,12 @@ def build_controls(dialog, layout):
         '手动备份：只保存到本机，使用导入／导出 ZIP 自行传递。\n\n'
         '词典路径、MDX／MDD 文件、词典附带 JS、对话记录和回收站中的旧脚本不进入备份。'
         '旧脚本仅在本机保留七天，恢复为当前脚本后才参与备份。\n\n'
-        'API Key 默认包含在备份中，且为明文；取消下方勾选可排除，本机密钥仍保留。'
+        'API Key 只保存在本机系统凭证库，不参与同步和备份；换设备后重新填写。'
         '导入缺少密钥的备份不会清空已有密钥。导出只包含已保存的配置，当前页面的修改需要先点击确定保存。')))
-    dialog.backup_api_keys = QCheckBox(tr('备份中包含 API Key（明文）'))
-    dialog.backup_api_keys.setChecked(getattr(config, 'data', {}).get('backup_api_keys', True))
-    box.addWidget(dialog.backup_api_keys)
+    dialog.backup_api_keys = QCheckBox(dialog)
+    dialog.backup_api_keys.setChecked(False)
+    dialog.backup_api_keys.hide()
+    box.addWidget(QLabel(tr('API Key 仅存本机系统凭证库，不参与同步和备份。')))
     dialog.backup_manual = QWidget()
     buttons = QHBoxLayout(dialog.backup_manual)
     buttons.setContentsMargins(0, 0, 0, 0)
@@ -70,11 +71,8 @@ def export_backup(dialog):
     try:
         if Path(path).suffix.lower() != '.zip':
             path += '.zip'
-        data = dict(config.data)
-        include_keys = data.get('backup_api_keys', True)
         ai = read_settings()
-        data['ai_settings'] = portable(ai)
-        data['credential_backup'] = ai.get('keys', {}) if include_keys else {}
+        data = {'ai_settings': portable(ai)}
         write_bundle(path, settings=portable(data), scripts=snapshot(script_directory()))
         QMessageBox.information(dialog, tr('导出 ZIP'), tr('备份已导出。'))
     except (OSError, ValueError, SyntaxError) as error:
@@ -98,6 +96,12 @@ def import_backup(dialog):
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
                 QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
             return
+        from ..service.ai_support.migration import scrub, _profiles
+        cleaned = scrub(bundle['settings'], _profiles(getattr(config, 'data', {})))
+        if cleaned != bundle['settings']:
+            from ..utils.backup_store import write_bundle
+            write_bundle(path, settings=cleaned)
+            bundle['settings'] = cleaned
         # Import does not switch the device's selected backup mode.
         incoming = dict(bundle['settings'], backup_mode=dialog._backup_mode)
         from ..utils.config_storage import validate_settings

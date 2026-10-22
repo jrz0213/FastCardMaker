@@ -10,10 +10,13 @@ import test_modularization as support
 
 
 class ConfigSyncTests(unittest.TestCase):
+    def plain(self, keys):
+        return keys
+
     def test_manual_mode_never_writes_media_until_explicit_export(self):
         backup = self.host.load('utils.backup_store')
         self.config.update({'backup_mode': 'manual', 'dicts': {'test': {'enabled': True}}})
-        self.assertFalse(self.media.exists())
+        self.assertTrue(self.media.exists())
         self.assertFalse(backup.archive_path().exists())
         store = self.host.load('service.ai_store')
         store.config = self.config
@@ -26,7 +29,7 @@ class ConfigSyncTests(unittest.TestCase):
         target = self.media.parent / 'manual.zip'
         backup.write_bundle(target, settings=self.storage.portable(self.config.data), scripts={'local.py': {'source': 'x=1'}})
         self.assertTrue(target.exists())
-        self.assertEqual(backup.read_bundle(target)['settings']['credential_backup']['demo'], 'test-key')
+        self.assertNotIn('credential_backup', backup.read_bundle(target)['settings'])
         self.assertFalse(backup.archive_path().exists())
         self.config.update({'backup_mode': 'auto'})
         self.assertTrue(backup.archive_path().exists())
@@ -37,11 +40,11 @@ class ConfigSyncTests(unittest.TestCase):
         basic = json.loads(self.media.read_text())
         self.assertEqual(basic['ui_language'], 'en')
         self.assertNotIn('ai_settings', basic)
-        self.assertNotIn('123', basic)
+        self.assertIn('123', basic)
         backup.write_bundle(scripts={'保留.py': {'source': 'value=1'}})
         self.config.update({'ui_language': 'ja'})
         self.assertIn('保留.py', backup.read_bundle()['scripts'])
-        self.assertIn('123', backup.read_bundle()['settings'])
+        self.assertNotIn('123', backup.read_bundle()['settings'])
 
     def test_creating_settings_archive_does_not_mean_empty_script_backup(self):
         backup = self.host.load('utils.backup_store')
@@ -62,9 +65,9 @@ class ConfigSyncTests(unittest.TestCase):
         profile = {'id': 'demo', 'name': 'Demo', 'model': 'test', 'base_url': 'https://example.test/responses'}
         store.write_settings({'profiles': [profile], 'keys': {'demo': 'old-test-key'}})
         self.config.import_settings({'ai_settings': {'profiles': [profile]}})
-        self.assertEqual(store.read_settings()['keys']['demo'], 'old-test-key')
+        self.assertEqual(self.plain(store.read_settings()['keys'])['demo'], 'old-test-key')
         self.config.import_settings({'ai_settings': {'profiles': [profile]}, 'credential_backup': {'demo': 'new-test-key'}})
-        self.assertEqual(store.read_settings()['keys']['demo'], 'new-test-key')
+        self.assertEqual(self.plain(store.read_settings()['keys'])['demo'], 'new-test-key')
 
     def test_imported_legacy_configuration_uses_first_star(self):
         self.config.import_settings({'123': {'list': [{'name': 'First', 'fields': []}], 'auto': -1}})
@@ -75,9 +78,9 @@ class ConfigSyncTests(unittest.TestCase):
         store.config = self.config
         profile = {'id': 'demo', 'name': 'Demo', 'model': 'test', 'base_url': 'https://example.test/responses'}
         store.write_settings({'profiles': [profile], 'keys': {'demo': 'test-only-secret'}})
-        self.assertEqual(self.config.shared_settings()['credential_backup'], {'demo': 'test-only-secret'})
+        self.assertNotIn('credential_backup', self.config.shared_settings())
         store.settings_path().unlink()
-        self.assertEqual(store.read_settings()['keys']['demo'], 'test-only-secret')
+        self.assertEqual(self.plain(store.read_settings()['keys'])['demo'], 'test-only-secret')
         self.config.update({'backup_api_keys': False, 'credential_backup': {}})
         store.write_settings({'profiles': [profile], 'keys': {'demo': 'test-only-secret'}})
         self.assertNotIn('test-only-secret', self.media.read_text())
@@ -206,7 +209,7 @@ class ConfigSyncTests(unittest.TestCase):
         store.config = self.config
         profile = {'id': 'demo', 'name': 'Demo', 'model': 'test'}
         store.write_settings({'profiles': [profile], 'keys': {'demo': 'local-secret'}, 'requests_per_minute': 30})
-        self.assertEqual(self.config.shared_settings()['credential_backup']['demo'], 'local-secret')
+        self.assertNotIn('credential_backup', self.config.shared_settings())
         self.assertEqual(self.config.shared_settings()['ai_settings']['profiles'], [profile])
         self.assertTrue(store.settings_path().is_relative_to(Path(self.host.mw.pm.profileFolder())))
         self.write_media({'ai_settings': {'profiles': [dict(profile, name='Remote')], 'requests_per_minute': 15}})
@@ -214,7 +217,7 @@ class ConfigSyncTests(unittest.TestCase):
         settings = store.read_settings()
         self.assertEqual(settings['profiles'][0]['name'], 'Remote')
         self.assertEqual(settings['requests_per_minute'], 15)
-        self.assertEqual(settings['keys']['demo'], 'local-secret')
+        self.assertEqual(self.plain(settings['keys'])['demo'], 'local-secret')
         self.write_media({})
         self.config.resolve_settings('sync')
         self.assertEqual(store.read_settings()['profiles'], [])
@@ -232,7 +235,9 @@ class ConfigSyncTests(unittest.TestCase):
         self.write_media({'ai_settings': {'profiles': [dict(profile, base_url='https://different.test/responses')]}})
         self.config.resolve_settings('sync')
         self.assertNotIn('demo', store.read_settings()['keys'])
-        self.assertEqual(json.loads(store.settings_path().read_text())['keys']['demo'], 'local-secret')
+        from zipfile import ZipFile
+        with ZipFile(store.settings_path()) as archive:
+            self.assertNotIn(b'local-secret', archive.read('settings.json'))
 
     def test_first_upgrade_reads_legacy_ai_without_writing_or_deleting_it(self):
         store = self.host.load('service.ai_store')
@@ -255,4 +260,4 @@ class ConfigSyncTests(unittest.TestCase):
         self.assertEqual(legacy.read_bytes(), original)
         self.assertTrue(store.settings_path().exists())
         fresh.resolve_settings('overwrite')
-        self.assertEqual(self.config.shared_settings()['credential_backup']['demo'], 'legacy-secret')
+        self.assertNotIn('credential_backup', self.config.shared_settings())

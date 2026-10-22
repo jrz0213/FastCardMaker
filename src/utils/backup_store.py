@@ -52,9 +52,16 @@ def write_bundle(path=None, settings=None, scripts=None):
     with LOCK:
         signature = (target.stat().st_mtime_ns, target.stat().st_size) if target.exists() else None
         previous = read_bundle(target) or {'settings': {}, 'scripts': {}, 'initialized': False}
+        # Never erase an old backup's only key when the system vault refuses
+        # migration, even if the caller supplies an otherwise clean replacement.
+        from ..service.ai_support.migration import scrub, _profiles
+        from ..context import config
+        catalogue = _profiles(getattr(config, 'data', {}))
+        previous['settings'] = scrub(previous['settings'], catalogue)
         if settings is not None:
             from .config_storage import portable, validate_settings
-            previous['settings'] = portable(validate_settings(deepcopy(settings)))
+            previous['settings'] = portable(scrub(validate_settings(deepcopy(settings)), catalogue))
+        previous['settings'].pop('credential_backup', None)
         if scripts is not None:
             from ..service.script_library import validate
             validate(scripts)
@@ -96,9 +103,14 @@ def shared_configuration(basic_path):
 
 def save_shared(basic_path, settings):
     from .config_storage import atomic_write
-    # Archive owns connections, prompts and bindings. JSON only owns general preferences.
-    write_bundle(Path(basic_path).parent / '_fastcm_backup.zip', settings={key: value for key, value in settings.items() if key not in BASIC_KEYS})
-    atomic_write(basic_path, {key: value for key, value in settings.items() if key in BASIC_KEYS})
+    # Only AI connections accompany Python scripts. Preferences and mappings
+    # (including script enable flags) live in the media configuration JSON.
+    write_bundle(Path(basic_path).parent / '_fastcm_backup.zip', settings={key: value for key, value in settings.items() if key == 'ai_settings'})
+    atomic_write(basic_path, preferences(settings))
+
+
+def preferences(settings):
+    return {key: value for key, value in settings.items() if key not in ('ai_settings', 'credential_backup')}
 
 
 def automatic():

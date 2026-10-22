@@ -73,6 +73,17 @@ class RefactorTests(unittest.TestCase):
         self.module_patch.start()
         self.addCleanup(self.module_patch.stop)
         self.load('service.ai_store').AI_ROOT = Path(profile_dir.name) / 'service' / 'ai'
+        password_store = self.load('utils.system_password')
+        self.credentials = {}
+        operations = {
+            'read': lambda identifier='': self.credentials.get(password_store._target(identifier)),
+            'write': lambda value, identifier='': self.credentials.__setitem__(password_store._target(identifier), value),
+            'delete': lambda identifier='': self.credentials.pop(password_store._target(identifier), None),
+        }
+        for operation, function in operations.items():
+            password_patch = patch.object(password_store, operation, side_effect=function)
+            password_patch.start()
+            self.addCleanup(password_patch.stop)
         # Use the actual mapping dictionary implementation, without utils/__init__.
         utils.MapDict = self.load('utils.misc').MapDict
 

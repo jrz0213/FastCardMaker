@@ -7,6 +7,7 @@ from ...service.ai_keys import key_store_path
 from ..model_input import ModelInput
 from ..flow_layout import FlowLayout
 from ..help_widgets import with_help
+from ..masked_key import MaskedKeyEdit
 
 
 def build_settings_layout(self):
@@ -31,10 +32,9 @@ def build_settings_layout(self):
     self.address.setPlaceholderText('https://example.com/v1/responses')
     self.address.setToolTip(tr('API 地址（含接口路径）'))
     self.address.editingFinished.connect(self.address_edited)
-    self.key = QLineEdit()
-    self.key.setEchoMode(QLineEdit.EchoMode.Password)
+    self.key = MaskedKeyEdit()
     self.key.setPlaceholderText(tr('点击确定后保存在本机，重启后仍保留'))
-    self.key.setToolTip(tr('API Key 在本机明文保存；默认也包含在配置备份中，可在插件设置关闭。\n') + str(key_store_path()))
+    self.key.setToolTip(tr('完整 API Key 仅保存在系统凭证库：Windows 凭据管理器、macOS 钥匙串。不进入配置或 ZIP 备份。平时显示前 3 位和后 3 位，编辑时隐藏。'))
     self.model = ModelInput()
     self.mode = QComboBox()
     self.mode.addItem('Responses API', 'responses')
@@ -55,7 +55,7 @@ def build_settings_layout(self):
             widget = with_help(widget, tr('AI 连接说明'), tr(
                 '填写完整 API 地址，包含域名后的接口路径，插件按地址识别协议。模型名称必须是该服务实际提供的模型 ID。'
                 '预设只是起点，可按自己的服务修改地址和模型。\n\n'
-                'API Key 点击确定后保存在本机，是否进入备份由通用设置控制。'
+                'API Key 点击确定后保存到本机系统凭证库，换设备后重新填写。'
                 '切换字段的 AI 连接不会修改该字段的提示词。'))
         basic_form.addRow(label, widget)
     self.send_hint = QLabel()
@@ -126,6 +126,10 @@ def build_settings_layout(self):
     remove.clicked.connect(self.remove_profile)
     buttons.addWidget(add)
     buttons.addWidget(remove)
+    self.reset_keys = QPushButton(tr('重试读取凭证'))
+    self.reset_keys.setVisible(self._keys_locked)
+    self.reset_keys.clicked.connect(self.retry_credentials)
+    buttons.addWidget(self.reset_keys)
     open_folder = QPushButton(tr('打开配置目录'))
     open_folder.clicked.connect(self.open_settings_folder)
     buttons.addWidget(open_folder)

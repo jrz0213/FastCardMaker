@@ -36,6 +36,8 @@ shortcut = ('Ctrl+Alt' if is_mac else 'Ctrl') + '+Q'
 def start_here():
     from .context import config
     config.activate_profile()
+    from .service.ai_support.migration import migrate_plaintext
+    migrate_plaintext()
     from . import common as fastcm
     from .utils.logger import set_logging_state  # 引入底层日志控制接口
     

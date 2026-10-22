@@ -27,6 +27,7 @@ def install_library(library):
                 replace_script(path, item['source'], old, root)
         else:
             path.write_text(item['source'], encoding='utf-8')
+    exclude_scripts(library, restore=True)
 
 
 def snapshot(directory):
@@ -57,6 +58,18 @@ def validate(library):
 def publish(directory, javascript=None, dict_path=None):
     from .script_backup import auto_publish
     return auto_publish()
+
+
+def exclude_scripts(names, restore=False):
+    from ..context import config
+    from ..utils.config_storage import atomic_write, read_object
+    path = script_directory() / '.sync-state.json'
+    state = read_object(path)
+    current = set(state.get('excluded', [])) | set(getattr(config, 'data', {}).get('excluded_scripts', []))
+    current = current - set(names) if restore else current | set(names)
+    state['excluded'] = sorted(current)
+    atomic_write(path, state)
+    config.update({'excluded_scripts': sorted(current)})
 
 
 def migrate_configuration(data, aliases):

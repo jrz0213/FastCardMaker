@@ -179,6 +179,9 @@ def fill_dict_combo_options(self, dict_combo, current_unique, services):
     if isinstance(aliases, dict):
         current_unique = aliases.get(current_unique, current_unique)
     dict_combo.clear()
+    font = dict_combo.font()
+    font.setStrikeOut(False)
+    dict_combo.setFont(font)
     if not current_unique:
         dict_combo.addItem(tr('未选择来源'), userData=None)
 
@@ -186,10 +189,16 @@ def fill_dict_combo_options(self, dict_combo, current_unique, services):
         saved = dict_combo.property('fwq_saved_dictionary_name')
         title = saved if isinstance(saved, str) and saved else str(current_unique or '')
         title = re.sub(r'^[🌐🟢⚪🔴🤖\s]+', '', title or '')
-        dict_combo.addItem(title + ' (' + tr('不可用') + ')', userData=current_unique)
+        dict_combo.addItem(title, userData=current_unique)
         item = dict_combo.model().item(dict_combo.count() - 1)
         if item:
             item.setFlags(item.flags() & ~Qt.ItemFlag.ItemIsEnabled)
+            font = item.font()
+            font.setStrikeOut(True)
+            item.setFont(font)
+        font = dict_combo.font()
+        font.setStrikeOut(True)
+        dict_combo.setFont(font)
 
     ai_services = services.get('ai', [])
     for service in ai_services:
@@ -248,7 +257,17 @@ def fill_dict_combo_options(self, dict_combo, current_unique, services):
                     return True
         return False
 
-    return set_dict_combo_index()
+    result = set_dict_combo_index()
+    def update_font(*_):
+        item = dict_combo.model().item(dict_combo.currentIndex())
+        font = dict_combo.font()
+        font.setStrikeOut(bool(item and item.font().strikeOut()))
+        dict_combo.setFont(font)
+    if not dict_combo.property('fwq_strike_connected'):
+        dict_combo.currentIndexChanged.connect(update_font)
+        dict_combo.setProperty('fwq_strike_connected', True)
+    update_font()
+    return result
 
 def fill_field_combo_options(self, field_combo, dict_combo_text,
                              dict_combo_itemdata, dict_fld_name,

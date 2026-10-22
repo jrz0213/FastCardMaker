@@ -666,21 +666,33 @@ class Original(MdxService):
         self.host.host.config.dicts = {'Custom': {'enabled': True}, 'legacy': {'enabled': True}}
         dialog = self.host.load('gui.dictmanager').DictManageDialog(None)
         self.host.widgets.append(dialog)
-        self.assertEqual(len(dialog._options), 2)
-        row, absent = dialog._options
+        self.assertEqual(len(dialog._options), 3)
+        row, absent, legacy = dialog._options
+        self.assertEqual(legacy['unique'], 'legacy')
+        self.assertTrue(legacy['check_btn'].font().strikeOut())
+        with patch.object(self.host.qt.QMessageBox, 'question', return_value=self.host.qt.QMessageBox.StandardButton.No):
+            dialog.delete_dictionary(legacy)
+        self.assertIn(legacy, dialog._options)
+        with patch.object(self.host.qt.QMessageBox, 'question', return_value=self.host.qt.QMessageBox.StandardButton.Yes) as confirm, \
+                patch.object(self.host.load('service.script_library'), 'exclude_scripts'), \
+                patch.object(self.host.load('service.script_library'), 'publish'), \
+                patch.object(dialog, 'detect_directories'):
+            dialog.delete_dictionary(legacy)
+        self.assertNotIn(legacy, dialog._options)
+        self.assertEqual(confirm.call_args.args[-1], self.host.qt.QMessageBox.StandardButton.No)
         self.assertEqual(set(row['uniques']), {'raw', 'Custom'})
         self.assertNotIn('oldhash', row['check_btn'].text())
         self.assertTrue(row['generate_btn'].isEnabled())
         self.assertTrue(row['edit_btn'].isEnabled())
         self.assertFalse(absent['generate_btn'].isEnabled())
         self.assertFalse(absent['generate_btn'].isHidden())
-        self.assertFalse(absent['missing_label'].isHidden())
+        self.assertTrue(absent['missing_label'].isHidden())
         row['check_btn'].setChecked(False)
         dialog.save()
         saved = self.host.host.config.update.call_args.args[0]['dicts']
         self.assertFalse(saved['raw']['enabled'])
         self.assertFalse(saved['Custom']['enabled'])
-        self.assertTrue(saved['legacy']['enabled'])
+        self.assertNotIn('legacy', saved)
 
     def test_missing_key_or_invalid_model_fails_before_dictionary_initialization(self):
         module = self.host.load('gui.script_generator')

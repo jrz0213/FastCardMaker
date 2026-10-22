@@ -133,4 +133,6 @@ def apply_selection(files, expected_local, expected_remote):
     excluded = set(state.get('excluded', [])) | (set(local) - set(files))
     excluded -= set(files)
     atomic_write(state_path(), {'baseline': digest(files), 'excluded': sorted(excluded)})
+    from ..context import config
+    config.update({'excluded_scripts': sorted(excluded)})
     _matched[str(script_directory())] = digest(files)

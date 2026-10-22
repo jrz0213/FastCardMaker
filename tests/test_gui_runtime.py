@@ -5,6 +5,7 @@ external dictionary files are opened or modified.
 """
 
 import importlib.util
+import json
 import os
 import sys
 import time
@@ -19,6 +20,45 @@ import test_modularization as support
 
 @unittest.skipUnless(importlib.util.find_spec('PyQt6'), 'PyQt6 is not installed')
 class GuiRuntimeTests(unittest.TestCase):
+    def test_vault_failure_cannot_erase_credentials_and_retry_recovers(self):
+        settings = self.load('gui.ai_settings')
+        ai = self.load('service.ai_config')
+        store = self.load('service.ai_store')
+        profile = ai.new_profile('deepseek')
+        profile['model'] = 'test-model'
+        ai.save_profiles([profile], {profile['id']: 'test-protected-key'})
+        ai.clear_session_keys()
+        system = self.load('utils.system_password')
+        with patch.object(system, 'read', side_effect=OSError('system locked')), patch.object(self.qt.QMessageBox, 'warning'):
+            dialog = settings.AISettingsDialog(None)
+            self.widgets.append(dialog)
+            before = store.settings_path().read_bytes()
+            dialog.accept()
+            self.assertEqual(store.settings_path().read_bytes(), before)
+        self.assertTrue(dialog._keys_locked)
+        dialog.retry_credentials()
+        self.assertEqual(store.settings_path().read_bytes(), before)
+        self.assertFalse(dialog._keys_locked)
+        self.assertEqual(store.read_settings()['keys'][profile['id']], 'test-protected-key')
+        self.assertEqual(store.read_settings()['profiles'][0]['id'], profile['id'])
+
+    def test_partial_key_preview_never_replaces_real_key_and_short_keys_are_hidden(self):
+        module = self.load('gui.masked_key')
+        field = module.MaskedKeyEdit()
+        self.widgets.append(field)
+        field.setText('abc-example-secret-xyz')
+        self.assertEqual(self.qt.QLineEdit.text(field), 'abc********xyz')
+        self.assertEqual(field.text(), 'abc-example-secret-xyz')
+        field.focusInEvent(self.qt.QFocusEvent(self.qt.QEvent.Type.FocusIn))
+        self.assertEqual(field.echoMode(), self.qt.QLineEdit.EchoMode.Password)
+        self.assertEqual(field.text(), 'abc-example-secret-xyz')
+        field.focusOutEvent(self.qt.QFocusEvent(self.qt.QEvent.Type.FocusOut))
+        self.assertEqual(self.qt.QLineEdit.text(field), 'abc********xyz')
+        field.setText('short')
+        self.assertEqual(self.qt.QLineEdit.text(field), '*****')
+        field.clear()
+        self.assertEqual(field.text(), '')
+
     def test_scheduled_type_select_all_reflects_individual_choices(self):
         self.background_host()
         sys.modules.pop(support.PACKAGE + '.gui.setting', None)
@@ -57,7 +97,7 @@ class GuiRuntimeTests(unittest.TestCase):
             backup.export_backup(dialog)
         save.assert_not_called()
         exported = write.call_args.kwargs['settings']
-        self.assertEqual(exported['auto_run']['interval_minutes'], 5)
+        self.assertNotIn('auto_run', exported)
         self.assertEqual(exported['ai_settings']['transport']['retries'], 2)
         self.assertEqual(exported['ai_settings']['transport']['timeout'], 90)
         self.assertNotIn('credential_backup', exported)
@@ -90,7 +130,7 @@ class GuiRuntimeTests(unittest.TestCase):
         self.widgets.append(dialog)
         self.assertTrue(dialog.auto_panel.isHidden())
         self.assertTrue(dialog.backup_manual.isHidden())
-        self.assertTrue(dialog.backup_api_keys.isChecked())
+        self.assertFalse(dialog.backup_api_keys.isChecked())
         self.load('gui.backup_controls').choose_mode(dialog, 'manual')
         self.assertFalse(dialog.backup_manual.isHidden())
         self.assertNotEqual(dialog.widget_values(), dialog._initial_values)
@@ -2161,6 +2201,9 @@ class GuiRuntimeTests(unittest.TestCase):
         self.assertEqual(credentials.session_key(profile_id), 'only-in-memory')
         saved = self.load('service.ai_store').read_settings()
         self.assertEqual(saved['keys'][profile_id], 'only-in-memory')
+        from zipfile import ZipFile
+        with ZipFile(self.load('service.ai_store').settings_path()) as archive:
+            self.assertNotIn(b'only-in-memory', archive.read('settings.json'))
         self.assertNotIn('api_key', saved['profiles'][0])
         self.assertEqual(saved['requests_per_minute'], 29)
         self.host.config.ai_profiles = []

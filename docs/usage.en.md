@@ -106,12 +106,16 @@ Click **OK** to save changes. Closing an edited settings window asks whether to 
 
 Under **Plugin settings → General settings → Configuration backup**, choose:
 
-- **Automatic backup**: saving configurations or current scripts updates `_fastcm_backup.zip` in the media folder, which syncs with Anki media.
-- **Manual backup**: edits stay local; use **Import ZIP / Export ZIP** explicitly, with the media folder as the default location. Export includes saved settings only, so save edits with OK first. Import warns that unsaved changes on the current settings page will be discarded.
+- **Automatic backup**: saving AI connections or current dictionary scripts updates `_fastcm_backup.zip` in the media folder, which syncs with Anki media.
+- **Manual backup**: AI connections and scripts stay local; use **Import ZIP / Export ZIP** explicitly, with the media folder as the default location. Export includes saved settings only, so save edits with OK first. Import warns that unsaved changes on the current settings page will be discarded.
 
 ![General settings and backup controls](images/user-guide/en-general-settings.png)
 
-**Include API keys in backup (plaintext)** is checked by default. Uncheck and save to exclude keys while retaining local credentials. A backup without keys does not clear existing local keys; connections without a usable key show “Missing API Key”.
+The ZIP contains only AI connection settings and current Python dictionary scripts. Ordinary preferences, field mappings and script enable flags are saved in the media folder’s `_fastcmcfg.json`, including in manual backup mode. Dictionary paths stay local.
+
+API keys are saved only in the local OS credential vault: Windows Credential Manager or macOS Keychain. They are excluded from configuration files, ZIPs and Anki sync. Enter keys again on another computer or OS account; no additional add-on encryption password is required. The field shows the first and last three characters with asterisks between them; keys of six characters or fewer are fully masked, and editing hides the key.
+
+At startup, the add-on checks known legacy settings and media-folder backups for plaintext keys. It saves each key to the OS vault and verifies it by reading it back before removing the plaintext. Failed migrations retain the original file and write a log entry. Importing an older ZIP elsewhere also checks and cleans it. A backup without keys does not clear local credentials; a connection without a key shows “Missing API Key”.
 
 In automatic mode, differing settings offer **Overwrite** (local to backup), **Sync** (backup to local) or **Cancel** (keep both for now). Differing scripts use per-file choices, described below.
 
@@ -132,7 +136,7 @@ Use default parsing for the complete entry, or a custom parser for separate mean
 
 New scripts prefer the **MDX filename**, with an optional internal title, rather than a fixed machine path. If a dictionary moves, add its new folder and rescan. Legacy fixed paths and existing audio handling remain supported; filename matching takes precedence when both bindings exist. Multiple matches require you to adjust imported folders rather than silently choosing a file.
 
-Missing dictionaries or data items show **Unavailable** and are skipped rather than replaced with another source.
+Missing dictionaries or scripts keep their original name with a strikethrough in the manager and Options, and queries skip them. Each manager row has a **Delete** button that requires confirmation: missing entries are removed and existing scripts move to the local recycle bin. Options has no delete button. Reselect invalid dictionary data items when needed.
 
 If images or audio fail to import, check MDD/resources first, then try fuzzy media matching under Dictionary settings and inspect the result. Dictionary JavaScript may be changing media paths; try AI parsing below. Missing source media cannot be recreated by a parser.
 

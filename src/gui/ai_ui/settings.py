@@ -17,11 +17,13 @@ class AISettingsDialog(Dialog):
         super().__init__(parent, tr('AI 设置'))
         self.resize(980, 700)
         self.items = profiles()
+        self._keys_locked = False
         try:
             self.keys = {item['id']: session_key(item['id']) for item in self.items}
         except ValueError as error:
             QMessageBox.warning(self, tr('API Key 读取失败'), str(error))
             self.keys = {}
+            self._keys_locked = True
         self.current = -1
         build_settings_layout(self)
         for item in self.items:
@@ -47,6 +49,20 @@ class AISettingsDialog(Dialog):
                 raise OSError()
         except OSError:
             QMessageBox.warning(self, tr('提示'), tr('无法打开配置目录，请检查文件夹权限。'))
+
+    def retry_credentials(self):
+        try:
+            keys = {item['id']: session_key(item['id']) for item in self.items}
+        except ValueError as error:
+            QMessageBox.warning(self, tr('API Key 读取失败'), str(error))
+            return
+        self.keys = keys
+        self._keys_locked = False
+        selected, self.current = self.current, -1
+        self.select_profile(selected)
+        self.reset_keys.hide()
+        for index, item in enumerate(self.items):
+            self.list.item(index).setText(item['name'] + ('' if keys.get(item['id']) else ' (' + tr('缺失 API Key') + ')'))
 
     def toggle_details(self, expanded):
         self.advanced.setVisible(expanded)
@@ -175,6 +191,9 @@ class AISettingsDialog(Dialog):
             self.skill.clear()
 
     def accept(self):
+        if self._keys_locked:
+            QMessageBox.warning(self, tr('AI 配置未保存'), tr('无法读取系统凭证，请先允许系统访问并重试。原配置未更改。'))
+            return
         self.address_edited()
         self.capture()
         try:

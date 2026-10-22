@@ -36,7 +36,7 @@ def new_profile(provider='custom'):
 
 
 def profiles():
-    stored = read_settings()
+    stored = read_settings(include_keys=False)
     value = stored.get('profiles', [])
     items = deepcopy(value) if isinstance(value, list) else []
     for item in items:
@@ -47,7 +47,8 @@ def profiles():
 
 
 def profile_choices():
-    return [{'title': item['name'] + ' · ' + item['model'] + ('' if session_key(item['id']) else ' (' + tr('缺失 API Key') + ')'), 'unique': 'ai:' + item['id']}
+    keys = read_settings().get('keys', {})
+    return [{'title': item['name'] + ' · ' + item['model'] + ('' if keys.get(item['id']) else ' (' + tr('缺失 API Key') + ')'), 'unique': 'ai:' + item['id']}
             for item in profiles()]
 
 
@@ -57,7 +58,7 @@ MAX_IN_FLIGHT = 32
 
 def ai_send_rate():
     try:
-        return max(1, min(600, int(read_settings().get('requests_per_minute', DEFAULT_REQUESTS_PER_MINUTE))))
+        return max(1, min(600, int(read_settings(include_keys=False).get('requests_per_minute', DEFAULT_REQUESTS_PER_MINUTE))))
     except (TypeError, ValueError):
         return DEFAULT_REQUESTS_PER_MINUTE
 
@@ -141,7 +142,7 @@ def clear_session_keys():
 
 
 def transport_settings():
-    stored = read_settings()
+    stored = read_settings(include_keys=False)
     old = next(iter(stored.get('profiles', [])), {})
     values = stored.get('transport', old)
     return {key: values.get(key, default) for key, default in

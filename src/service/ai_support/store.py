@@ -1,111 +1,108 @@
-"""Profile-local credentials, with portable AI settings in the shared config."""
-
-from ...translations import text as tr
-
+"""AI metadata in ZIP; complete API keys in the operating system vault."""
 import json
 import os
-import tempfile
 from copy import deepcopy
 from pathlib import Path
-from urllib.parse import urlsplit
-
 from aqt import mw
 from ...context import config
+from ...translations import text as tr
+from ...utils.ai_archive import cache_path, read_cache, write_cache
+from . import credentials
 
 AI_ROOT = Path(__file__).resolve().parent.parent / 'ai'
 
 
 def settings_path():
-    return Path(mw.pm.profileFolder()) / 'fastcm' / 'ai' / 'config.json'
+    return cache_path()
 
 
 def legacy_keys_path():
     return Path(mw.pm.profileFolder()) / '_fastwq_ai_keys.json'
 
 
-def read_settings():
-    try:
-        path = settings_path()
+def _legacy():
+    paths = [cache_path().with_name('config.json'), AI_ROOT / Path(mw.pm.profileFolder()).name / 'config.json']
+    for path in paths:
         if path.exists():
-            with path.open(encoding='utf-8') as file:
-                data = json.load(file)
-        elif (AI_ROOT / Path(mw.pm.profileFolder()).name / 'config.json').exists():
-            with (AI_ROOT / Path(mw.pm.profileFolder()).name / 'config.json').open(encoding='utf-8') as file:
-                data = json.load(file)
-        else:
-            keys = {}
-            if legacy_keys_path().exists():
-                with legacy_keys_path().open(encoding='utf-8') as file:
-                    keys = json.load(file)
-            data = dict(profiles=getattr(config, 'ai_profiles', []),
-                        requests_per_minute=29, keys=keys)
+            return json.loads(path.read_text(encoding='utf-8'))
+    keys = json.loads(legacy_keys_path().read_text(encoding='utf-8')) if legacy_keys_path().exists() else {}
+    return dict(profiles=getattr(config, 'ai_profiles', []), requests_per_minute=29, keys=keys)
+
+
+def read_settings(include_keys=True):
+    try:
+        data = read_cache()
+        legacy = _legacy() if data is None else {}
+        data = deepcopy(data if data is not None else legacy)
         shared = getattr(config, 'ai_settings', None)
         if isinstance(shared, dict):
-            keys = deepcopy(data.get('keys', {}))
-            backup = getattr(config, 'data', {}).get('credential_backup', {})
-            if isinstance(backup, dict) and getattr(config, 'data', {}).get('backup_api_keys', True):
-                for identifier, key in backup.items():
-                    if isinstance(identifier, str) and isinstance(key, str):
-                        if key:
-                            keys[identifier] = key
-            previous = {item['id']: item for item in data.get('profiles', []) if isinstance(item, dict) and 'id' in item}
-            for item in shared.get('profiles', []):
-                old = previous.get(item.get('id'), {})
-                if old.get('base_url'):
-                    before, after = urlsplit(old['base_url']), urlsplit(item.get('base_url', ''))
-                    if (before.scheme, before.netloc) != (after.scheme, after.netloc) and not backup.get(item.get('id')):
-                        keys.pop(item.get('id'), None)
-            data = dict(deepcopy(shared), keys=keys)
-        if not isinstance(data, dict) or not isinstance(data.get('profiles', []), list):
+            data.update(deepcopy(shared))
+        if not isinstance(data.get('profiles', []), list):
             raise ValueError()
-        keys = data.get('keys', {})
-        if not isinstance(keys, dict) or any(not isinstance(k, str) or not isinstance(v, str)
-                                            for k, v in keys.items()):
-            raise ValueError()
-        return data
-    except (OSError, ValueError):
-        raise ValueError(tr('无法读取 AI 配置文件，请检查文件权限或格式。')) from None
+        old_keys = legacy.get('keys', {})
+        old_backup = getattr(config, 'data', {}).get('credential_backup', {})
+        keys = {}
+        if not include_keys:
+            return dict(data, keys={})
+        for profile in data.get('profiles', []):
+            key = credentials.read(profile)
+            if not key:
+                previous = next((p for p in legacy.get('profiles', []) if p.get('id') == profile['id']), None)
+                if previous is None or credentials.identifier(previous) == credentials.identifier(profile):
+                    key = old_keys.get(profile['id'], '') or old_backup.get(profile['id'], '')
+            if not isinstance(key, str) or key.startswith('fastcm-key-'):
+                raise ValueError()
+            if key:
+                keys[profile['id']] = key
+        return dict(data, keys=keys)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        raise ValueError(tr('无法读取 AI 配置或系统凭证库，原配置未更改。')) from None
 
 
 def write_settings(data, backup_api_keys=None):
-    path = settings_path()
-    temporary = None
+    from ...utils.config_storage import portable
+    data = deepcopy(data)
+    previous = read_settings()
+    previous_cache = read_cache()
+    changed = []
     try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=path.parent,
-                                         prefix='.fastwq_ai-', delete=False) as file:
-            temporary = Path(file.name)
-            os.chmod(temporary, 0o600)
-            json.dump(data, file, ensure_ascii=False, indent=2)
-            file.flush()
-            os.fsync(file.fileno())
-        os.replace(temporary, path)
-        from ...utils.config_storage import portable
-        enabled = getattr(config, 'data', {}).get('backup_api_keys', True) if backup_api_keys is None else backup_api_keys
-        config.update({'ai_settings': portable(data), 'backup_api_keys': bool(enabled),
-                       'credential_backup': deepcopy(data.get('keys', {})) if
-                       enabled else {}})
-    except OSError:
-        raise ValueError(tr('无法保存 AI 配置，请检查当前 Anki 用户文件夹的写入权限。')) from None
-    finally:
-        if temporary is not None and temporary.exists():
-            temporary.unlink()
+        for profile in data.get('profiles', []):
+            key = data.get('keys', {}).get(profile['id'], '')
+            if not isinstance(key, str):
+                raise ValueError('Invalid API key')
+            old = credentials.read(profile)
+            if old != key:
+                changed.append((profile, old))
+                credentials.write(profile, key)
+        write_cache(portable(data))
+        config.update({'ai_settings': portable(data), 'backup_api_keys': False, 'credential_backup': {}})
+    except (OSError, ValueError):
+        for profile, key in reversed(changed):
+            credentials.write(profile, key)
+        if previous_cache is not None:
+            write_cache(previous_cache)
+        elif settings_path().exists():
+            settings_path().unlink()
+        raise ValueError(tr('无法保存 AI 配置或系统凭证，原密钥已保留。')) from None
+    current = {credentials.identifier(p) for p in data.get('profiles', [])}
+    for profile in previous.get('profiles', []):
+        if credentials.identifier(profile) not in current:
+            credentials.write(profile, '')
 
 
 def remove_legacy_settings():
-    """Called only after a complete new file has been saved."""
+    """Delete only obsolete local key files after credentials were saved safely."""
     try:
         data = getattr(config, 'data', None)
         if isinstance(data, dict) and ('ai_profiles' in data or 'ai_thread_number' in data):
-            previous = dict(data)
             data.pop('ai_profiles', None)
             data.pop('ai_thread_number', None)
-            try:
-                config.update({})
-            except Exception:
-                data.clear()
-                data.update(previous)
-                raise
-        legacy_keys_path().unlink(missing_ok=True)
-    except Exception:
-        raise ValueError(tr('AI 配置已保存到新目录，但旧配置清理失败，请检查旧文件写入权限。')) from None
+            config.update({})
+        from .migration import scrub, _profiles
+        for path in (legacy_keys_path(), cache_path().with_name('config.json')):
+            if path.exists():
+                scrub(json.loads(path.read_text(encoding='utf-8')), _profiles(read_cache() or {}),
+                      keys_only=path == legacy_keys_path())
+                path.unlink()
+    except (OSError, ValueError):
+        raise ValueError(tr('AI 配置已保存，但旧配置清理失败，请检查旧文件权限。')) from None

@@ -8,7 +8,7 @@ import tempfile
 
 LOCAL_KEYS = {'dirs', 'last_folder', 'last_model', '_auto_run_state', 'version',
               'path', 'dict_path', 'mdx_path', 'script_path', 'script_paths',
-              'api_key', 'keys', 'ai_thread_number', 'script_library', 'dictionary_javascript'}
+              'api_key', 'keys', 'credential_backup', 'backup_api_keys', 'ai_thread_number', 'script_library', 'dictionary_javascript'}
 
 
 def portable(value):

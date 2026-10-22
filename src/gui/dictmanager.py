@@ -4,6 +4,7 @@ import sys
 import importlib
 from copy import deepcopy
 from types import SimpleNamespace
+from pathlib import Path
 from aqt.qt import *
 
 from ..context import config
@@ -43,6 +44,7 @@ class DictManageDialog(Dialog):
         self._closed = False
         self.preview_loader = None
         self._choices = deepcopy(config.dicts)
+        self._removed = set()
 
         # 全局统一的脚本目录路径
         from ..service.script_library import script_directory
@@ -102,6 +104,8 @@ class DictManageDialog(Dialog):
             seen = set()
             for group in services:
                 factory = group['primary']
+                if factory.__unique__ in self._removed:
+                    continue
                 if factory.__unique__ in seen:
                     continue
                 seen.add(factory.__unique__)
@@ -111,8 +115,19 @@ class DictManageDialog(Dialog):
                 self.add_dict_layout(len(seen) - 1, title=title, unique=factory.__unique__, path=script,
                     mdx_path=group['dict_path'], script_paths=group['script_paths'], uniques=group['uniques'],
                     binding_status=group.get('binding_status', ''), dictionary_title=group.get('dictionary_title', ''),
+                    kind='local' if page == 0 else 'web',
                     enabled=any(self._choices.get(unique, {}).get('enabled', False) for unique in group['uniques']))
             self.dicts_layout.setRowStretch(len(seen), 1)
+        known = {unique for row in self._options for unique in row.get('uniques', [row['unique']])}
+        aliases = getattr(registry, 'aliases', {})
+        for unique, saved in list(self._choices.items()):
+            if unique in known or unique in self._removed or isinstance(aliases, dict) and aliases.get(unique) in known:
+                continue
+            page = 1 if saved.get('kind') == 'web' else 0
+            self.dicts_layout = self.dictionary_pages[page][1]
+            self.add_dict_layout(self.dicts_layout.rowCount(), title=saved.get('title') or unique,
+                unique=unique, enabled=saved.get('enabled', False), missing=True,
+                script_file=saved.get('script_file', ''), kind=saved.get('kind', 'local'))
         self.enabled_all_update()
 
     def detect_directories(self):
@@ -186,6 +201,8 @@ class DictManageDialog(Dialog):
                 replace_script(target, source, target.read_text(encoding='utf-8'), target.parent)
             else:
                 target.write_text(source, encoding='utf-8')
+            from ..service.script_library import exclude_scripts
+            exclude_scripts([name], restore=True)
             publish(target.parent)
             self.detect_directories()
         except (OSError, ValueError, SyntaxError) as error:
@@ -212,6 +229,11 @@ class DictManageDialog(Dialog):
         check_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         check_btn.setEnabled(True)
         check_btn.setChecked(enabled)
+        mdx_path = kwargs.get('mdx_path', '')
+        missing = kwargs.get('missing', False) or kwargs.get('binding_status') in ('missing', 'ambiguous') or bool(mdx_path and not os.path.isfile(mdx_path))
+        font = check_btn.font()
+        font.setStrikeOut(missing)
+        check_btn.setFont(font)
         check_btn.setCursor(Qt.CursorShape.PointingHandCursor)
 
         # 独立的编辑脚本按钮
@@ -259,7 +281,9 @@ class DictManageDialog(Dialog):
         font.setPointSize(max(8, font.pointSize() - 2))
         missing_label.setFont(font)
         missing_label.setStyleSheet('color: palette(mid);')
-        missing_label.setVisible(not bool(dict_path and os.path.isfile(dict_path)))
+        missing_label.hide()
+        if kwargs.get('binding_status') == 'ambiguous':
+            check_btn.setToolTip(tr('存在多个匹配的词典文件，请调整导入目录'))
         label_layout.addWidget(missing_label)
         internal_title = kwargs.get('dictionary_title', '')
         if internal_title and internal_title != title.split(' · ')[0]:
@@ -277,14 +301,57 @@ class DictManageDialog(Dialog):
                                     cls=unique: self.generate_script(p, paths, cls if paths else None))
         self.dicts_layout.addWidget(generate_btn, i, 2)
 
-        self._options.append({
+        row = {
             'unique': unique,
             'uniques': kwargs.get('uniques', [unique]),
             'missing_label': missing_label,
             'check_btn': check_btn,
             'edit_btn': edit_btn,
-            'generate_btn': generate_btn
-        })
+            'generate_btn': generate_btn,
+            'title': title, 'kind': kwargs.get('kind', 'local'),
+            'script_paths': kwargs.get('script_paths', [path] if path else []),
+            'script_file': kwargs.get('script_file') or (Path(path).name if path else ''),
+        }
+        delete_btn = QPushButton(tr('删除'))
+        delete_btn.setStyleSheet(btn_style)
+        delete_btn.setVisible(bool(path or row['script_file'] or missing))
+        delete_btn.clicked.connect(lambda checked=False, item=row: self.delete_dictionary(item))
+        self.dicts_layout.addWidget(delete_btn, i, 3)
+        row['delete_btn'] = delete_btn
+        self._options.append(row)
+
+    def delete_dictionary(self, row):
+        if QMessageBox.question(self, tr('删除脚本'), tr('确认删除“%s”？现有脚本移入本机回收站，缺失项移除记录。') % row['title'],
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                QMessageBox.StandardButton.No) != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            from ..service.script_library import exclude_scripts, publish
+            paths = [Path(path) for path in row['script_paths'] if path]
+            for path in paths:
+                if path.exists():
+                    recycle_script(path, self.plugin_dict_folder)
+            names = {path.name for path in paths}
+            if row['script_file']:
+                names.add(row['script_file'])
+            exclude_scripts(names)
+            uniques = row.get('uniques', [row['unique']])
+            self._removed.update(uniques)
+            choices = deepcopy(config.dicts)
+            for unique in uniques:
+                self._choices.pop(unique, None)
+                choices.pop(unique, None)
+            self._options.remove(row)
+            initial, folders = self._initial_dictionary_values
+            self._initial_dictionary_values = (tuple(item for item in initial if item[0] not in uniques), folders)
+            row['check_btn'].parentWidget().hide()
+            for key in ('edit_btn', 'generate_btn', 'delete_btn'):
+                row[key].hide()
+            config.update({'dicts': choices})
+            publish(self.plugin_dict_folder)
+            self.detect_directories()
+        except (OSError, ValueError) as error:
+            QMessageBox.warning(self, tr('删除脚本'), str(error))
 
     def enabled_all_update(self):
         b = True
@@ -317,14 +384,9 @@ class DictManageDialog(Dialog):
         menu = QMenu(button)
         remove = menu.addAction(tr('删除脚本（移入回收站）'))
         if menu.exec(button.mapToGlobal(point)) == remove:
-            try:
-                recycle_script(path, self.plugin_dict_folder)
-                self.scan_label.setText(tr('脚本已移入回收站，可恢复。'))
-                self.scan_label.show()
-                self.detect_directories()
-            except (OSError, ValueError):
-                self.scan_label.setText(tr('无法删除脚本。'))
-                self.scan_label.show()
+            row = next((row for row in self._options if path in row['script_paths']), None)
+            if row:
+                self.delete_dictionary(row)
 
     def open_global_scripts_dir(self):
         """打开全局的解析脚本所在目录"""
@@ -391,6 +453,9 @@ class DictManageDialog(Dialog):
         for row in self._options:
             for unique in row.get('uniques', [row['unique']]):
                 dicts.setdefault(unique, {})['enabled'] = row['check_btn'].isChecked()
+                dicts[unique].update(title=row['title'], kind=row['kind'], script_file=row['script_file'])
+        for unique in self._removed:
+            dicts.pop(unique, None)
         data['dicts'] = dicts
         data.update(dirs=self.folders.dirs, use_filename=self.folders.chk_use_filename.isChecked(),
                     export_media=self.folders.chk_export_media.isChecked())

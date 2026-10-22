@@ -157,6 +157,9 @@ class ServiceManager(object):
         files = sorted(set(files) | {path.name for path in cache.glob('*.py')})
         from ..utils.config_storage import read_object
         excluded = set(read_object(cache / '.sync-state.json').get('excluded', []))
+        data = getattr(self.settings, 'data', {})
+        if isinstance(data, dict):
+            excluded.update(data.get('excluded_scripts', []))
         files = [name for name in files if name not in excluded]
         self.script_library = {}
         base_class = (

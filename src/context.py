@@ -69,8 +69,11 @@ class Config(object):
 
     def update(self, data):
         self.read()
+        from .utils.backup_store import preferences
+        previous_preferences = preferences(portable(self.data))
         updated = dict(self.data)
         updated.update({str(key): value for key, value in data.items()})
+        self._secure_credentials(updated)
         updated['version'] = VERSION
         updated['%s_last' % self.pmname] = data.get('last_model', self.last_model_id)
         # An externally changed media file must never be overwritten by a save
@@ -99,6 +102,11 @@ class Config(object):
             except (OSError, ValueError):
                 # The local save succeeded; keep a pending copy for resolution.
                 self._sync_paused = True
+        elif updated.get('backup_mode') == 'manual' and shared is not None and not self._sync_paused:
+            if preferences(shared) == previous_preferences and fingerprint(self._read_shared()) == expected_hash:
+                atomic_write(self.path, preferences(portable(updated)))
+                self._shared_hash = fingerprint(self._read_shared())
+                self._write_local(updated, self._shared_hash)
         runHook('config.update')
 
     @property
@@ -106,15 +114,35 @@ class Config(object):
         return Path(self.window.pm.profileFolder()) / '_fastcm_local.json'
 
     def _write_local(self, data, shared_hash):
-        atomic_write(self.local_path, {'format': 'fastcm-local', 'settings': data,
+        self._secure_credentials(data)
+        previous_path = self.local_path.with_suffix('.previous.json')
+        previous = read_object(previous_path)
+        if isinstance(previous.get('settings'), dict):
+            before = deepcopy(previous)
+            self._secure_credentials(previous['settings'])
+            if previous != before:
+                atomic_write(previous_path, previous)
+        from .utils.ai_archive import cache_path, write_cache
+        if 'ai_settings' in data or 'ai_profiles' in data or cache_path().exists():
+            write_cache(data.get('ai_settings', {'profiles': data.get('ai_profiles', [])}))
+        ordinary = {key: value for key, value in data.items() if key not in ('ai_settings', 'credential_backup')}
+        atomic_write(self.local_path, {'format': 'fastcm-local', 'settings': ordinary,
                                        'shared_hash': shared_hash})
 
     def shared_settings(self):
         return portable(validate_settings(self._read_shared()))
 
     def _write_shared(self, settings):
+        self._secure_credentials(settings)
         from .utils.backup_store import save_shared
         save_shared(self.path, portable(settings))
+
+    def _secure_credentials(self, settings):
+        from .service.ai_support.migration import scrub, _profiles
+        cleaned = scrub(settings, _profiles(self.data or {}))
+        settings.clear()
+        settings.update(cleaned)
+        settings['backup_api_keys'] = False
 
     def _read_shared(self):
         if os.path.exists(self.path):
@@ -131,6 +159,9 @@ class Config(object):
         if self.data.get('backup_mode', 'auto') == 'manual':
             return []
         remote, local = self.shared_settings(), portable(self.data)
+        # This retired preference no longer carries a user choice.
+        remote.pop('backup_api_keys', None)
+        local.pop('backup_api_keys', None)
         differences = sorted(key for key in set(remote) | set(local)
                              if key not in remote or key not in local or remote[key] != local[key])
         if not differences:
@@ -146,8 +177,11 @@ class Config(object):
             raise ValueError('Invalid configuration action')
         remote = self.shared_settings()
         updated = deepcopy(self.data) if action == 'overwrite' else restore_portable(remote, self.data)
+        self._secure_credentials(updated)
+        previous = deepcopy(remote if action == 'overwrite' else self.data)
+        self._secure_credentials(previous)
         atomic_write(self.local_path.with_suffix('.previous.json'),
-                     {'format': 'fastcm-local', 'settings': remote if action == 'overwrite' else self.data,
+                     {'format': 'fastcm-local', 'settings': previous,
                       'shared_hash': self._shared_hash})
         if action == 'overwrite':
             self._write_shared(updated)
@@ -160,10 +194,19 @@ class Config(object):
 
     def import_settings(self, settings):
         incoming = portable(validate_settings(settings, importing=True))
+        if set(incoming) <= {'ai_settings', 'backup_mode', 'backup_api_keys'}:
+            incoming = dict(portable(self.data), **incoming)
+        if isinstance(settings.get('credential_backup'), dict):
+            from .service.ai_support.credentials import migrate_backup
+            legacy = deepcopy(settings)
+            migrate_backup(legacy, overwrite=True)
         updated = restore_portable(incoming, self.data)
+        self._secure_credentials(updated)
         self._normalize_stars(updated)
+        previous = deepcopy(self.data)
+        self._secure_credentials(previous)
         atomic_write(self.local_path.with_suffix('.previous.json'),
-                     {'format': 'fastcm-local', 'settings': self.data, 'shared_hash': self._shared_hash})
+                     {'format': 'fastcm-local', 'settings': previous, 'shared_hash': self._shared_hash})
         self._write_local(updated, self._shared_hash)
         self.data = updated
         self._local_shared_hash = fingerprint(updated)
@@ -201,7 +244,7 @@ class Config(object):
             self._shared_hash = fingerprint(self._read_shared())
         # Existing AI profiles are copied into portable settings in memory only.
         # Credentials continue to be read from the original local file until saved.
-        if not local and 'ai_settings' not in self.data:
+        if 'ai_settings' not in self.data:
             account = Path(self.window.pm.profileFolder())
             for ai_path in (account / 'fastcm' / 'ai' / 'config.json',
                             Path(__file__).parent / 'service' / 'ai' / account.name / 'config.json'):
@@ -210,6 +253,12 @@ class Config(object):
                     break
         self._local_shared_hash = fingerprint(self.data)
         self._sync_paused = False
+        if 'ai_settings' not in self.data:
+            from .utils.ai_archive import read_cache
+            cached_ai = read_cache()
+            if cached_ai is not None and cached_ai != {'profiles': []}:
+                self.data['ai_settings'] = cached_ai
+                self._local_shared_hash = fingerprint(self.data)
         self._profile_key = profile
         self.generation += 1
         # Read older names, but keep them intact. The next explicit save writes

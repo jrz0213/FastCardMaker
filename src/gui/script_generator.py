@@ -831,7 +831,8 @@ class ScriptGeneratorDialog(Dialog):
                 path = replace_script(original['path'], self.result['source'], original['source'], directory)
             else:
                 path = save_script(self.result['filename'], self.result['source'], directory)
-            from ..service.script_library import publish
+            from ..service.script_library import publish, exclude_scripts
+            exclude_scripts([Path(path).name], restore=True)
             publish(directory, self.result.get('javascript'), self.dict_path)
         except ValueError as error:
             self.status.setText(str(error))

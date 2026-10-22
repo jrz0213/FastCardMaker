@@ -246,7 +246,7 @@ class SettingDialog(Dialog):
     def reset(self):
         from .backup_controls import choose_mode
         choose_mode(self, 'auto')
-        self.backup_api_keys.setChecked(True)
+        self.backup_api_keys.setChecked(False)
         self.language_combo.setCurrentIndex(0)
         self.ai_send_mode.setCurrentIndex(0)
         self.ai_rate.setValue(29)
@@ -302,9 +302,7 @@ class SettingDialog(Dialog):
         except ValueError as error:
             QMessageBox.warning(self, tr('AI 设置'), str(error))
             return False
-        from ..service.ai_support.store import read_settings
-        credentials = read_settings().get('keys', {})
-        config.update(dict(self.pending_settings(), credential_backup=credentials if self.backup_api_keys.isChecked() else {}))
+        config.update(self.pending_settings())
 
     def accept(self):
         previous = getattr(config, 'ui_language', '')

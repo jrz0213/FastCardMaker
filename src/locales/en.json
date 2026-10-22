@@ -791,6 +791,7 @@
   "描述希望提取或修复的内容，留空使用默认要求。": "Describe what to extract or repair. Leave blank to use the default request.",
   "提取词典已有的释义、音标、例句和发音。结合 HTML、JS 和原脚本分析结构；仅在需要时修复音频路径，保留已正常工作的处理。不要添加无关字段；无法确定的内容不要猜测。": "Extract existing definitions, pronunciation, examples and audio. Analyze the HTML, JS and original parser; repair audio paths only when necessary and preserve working behavior. Do not add unrelated fields or guess missing content.",
   "勾选（默认）：AI 返回 JSON 规则，由插件生成 Python 脚本。适合常规提取和简单音频路径修复，可预览结果，复杂逻辑受规则限制。\n\n不勾选：AI 直接生成 Python 脚本。适合嵌套内容和复杂处理，灵活性更高；生成时只检查语法和结构，需查看代码并调试。": "Checked (default): AI returns JSON rules and the add-on generates Python. Suitable for standard extraction and simple audio repairs, with previews; complex logic is limited by the rule format.\n\nUnchecked: AI generates Python directly. More flexible for nested content and complex processing. Generation checks syntax and structure only; review and debug the code.",
+  "注意 Token 消耗：携带历史、源码和调试信息会增加用量。": "Mind token usage: including history, source code and debug information increases consumption.",
   "接口格式": "Interface format",
   "接口格式说明": "Interface format help",
   "请选择有效的接口格式。": "Choose a valid interface format.",

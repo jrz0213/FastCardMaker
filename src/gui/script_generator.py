@@ -793,6 +793,7 @@ class ScriptGeneratorDialog(Dialog):
     def show_output_help(self):
         content = tr('勾选（默认）：AI 返回 JSON 规则，由插件生成 Python 脚本。适合常规提取和简单音频路径修复，可预览结果，复杂逻辑受规则限制。\n\n'
                      '不勾选：AI 直接生成 Python 脚本。适合嵌套内容和复杂处理，灵活性更高；生成时只检查语法和结构，需查看代码并调试。')
+        content += '\n\n' + tr('注意 Token 消耗：携带历史、源码和调试信息会增加用量。')
         dialog = Dialog(self, tr('输出方式说明'))
         dialog.resize(560, 240)
         layout = QVBoxLayout(dialog)

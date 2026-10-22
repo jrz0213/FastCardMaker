@@ -24,7 +24,11 @@ AI 连接和当前 Python 脚本共同备份至媒体库 `_fastcm_backup.zip`，
 `service/ai_support/conversation.py` 分别组装 Chat Completions、Responses 和 Messages 的无状态历史；
 自定义连接的 `interface_format` 随配置保存，非标准路径按此格式发送，标准后缀冲突时拒绝保存。
 词典脚本窗口的用户／AI 消息进入历史，本地处理和调试记录放入当前请求的 `local_information`；
+其中仅附带最新 AI 回复起产生的本地信息，避免每轮重发旧调试资料。
 相同脚本通过内容指纹和来源引用避免在历史与附件之间重复发送。普通笔记 AI 查询不携带这些上下文。
+`service/script_reply.py` 解析 `ai-message` 与完整 `rules`／`code`，纯消息不修改脚本；
+`gui/script_message_view.py` 仅负责安全 Markdown 和 JSON 展示，原始回复用于复制及历史。
+`utils/script_editor.py` 显式调用文本编辑器，避免通过 `.py` 文件关联执行脚本。
 基础 Markdown 转换位于 `utils/markdown.py`。使用方法见 [AI 字段填充](usage.zh-CN.md)。
 操作流程见 [图文指南](usage.zh-CN.md)。
 

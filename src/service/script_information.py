@@ -50,6 +50,9 @@ def request_record(model, instructions, request, payload, user_message, dictiona
 def selected_context(records, selected=None):
     """Conversation turns stay in history; local observations are current attachments."""
     history, information = [], []
+    latest_reply = max((index for index, record in enumerate(records)
+                        if record.get('kind', 'request') == 'request' and record.get('response')
+                        and record.get('state') != 'cancelled'), default=-1)
     for index, record in enumerate(records):
         kind = record.get('kind', 'request')
         chosen = lambda role: selected is None or '%s-%s' % (index, role) in selected
@@ -59,13 +62,13 @@ def selected_context(records, selected=None):
                     record.get('request', {}).get('user_command', ''))})
             if record.get('response') and chosen('assistant'):
                 history.append({'role': 'assistant', 'content': str(record['response'])})
-            if record.get('local') and chosen('local'):
+            if index >= latest_reply and record.get('local') and chosen('local'):
                 information.append({'id': record.get('id', str(index)), 'kind': 'local',
                     'time': record.get('time', ''), 'data': deepcopy(record['local'])})
         elif kind == 'context':
             if chosen('user'):
                 history.append({'role': 'user', 'content': str(record.get('content', ''))})
-        elif chosen('debug' if kind == 'debug' else 'local'):
+        elif index >= latest_reply and chosen('debug' if kind == 'debug' else 'local'):
             information.append({'id': record.get('id', str(index)), 'kind': kind,
                 'time': record.get('time', ''), 'data': deepcopy(record)})
     return history, information
@@ -99,7 +102,8 @@ def deduplicate_scripts(request, history):
             item.pop(key)
             item[key + '_reference'] = {'sha256': digest, 'location': known[digest]}
         else:
-            known[digest] = location + '.' + key
+            known[digest] = location + '.' + key if location else key
+    source_once(value, 'code', '')
     if isinstance(value.get('current_script'), dict):
         source_once(value['current_script'], 'source', 'current_script')
     for index, item in enumerate(value.get('original_scripts', [])):

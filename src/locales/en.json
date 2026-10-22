@@ -797,5 +797,15 @@
   "请选择有效的接口格式。": "Choose a valid interface format.",
   "接口格式与 API 地址后缀不一致，请修改格式或地址。": "The interface format conflicts with the API URL suffix. Change the format or address.",
   "Messages 使用 system 和 messages；输出上限使用 max_tokens，其他参数以服务器说明为准。": "Messages uses system and messages, with max_tokens as the output limit. Check your server documentation for other parameters.",
-  "选择服务器支持的 Chat Completions、Responses 或 Messages。标准地址后缀可自动识别，特殊路径按所选格式发送。这决定请求、认证和回复的结构，不会让不支持的服务器自动兼容。\n\n历史对话仅用于词典脚本生成与修改，按当前窗口的全部／勾选消息发送。普通 AI 制卡不携带历史，不使用会话 ID。": "Choose Chat Completions, Responses or Messages to match your server. Standard endpoint suffixes are detected automatically; special paths use the selected format. This controls request, authentication and response structures; it does not add support to the server.\n\nHistory is included only when generating or modifying dictionary scripts, using all or checked items in that window. Ordinary AI flashcard requests do not include this history. Conversation IDs are not used."
+  "选择服务器支持的 Chat Completions、Responses 或 Messages。标准地址后缀可自动识别，特殊路径按所选格式发送。这决定请求、认证和回复的结构，不会让不支持的服务器自动兼容。\n\n历史对话仅用于词典脚本生成与修改，按当前窗口的全部／勾选消息发送。普通 AI 制卡不携带历史，不使用会话 ID。": "Choose Chat Completions, Responses or Messages to match your server. Standard endpoint suffixes are detected automatically; special paths use the selected format. This controls request, authentication and response structures; it does not add support to the server.\n\nHistory is included only when generating or modifying dictionary scripts, using all or checked items in that window. Ordinary AI flashcard requests do not include this history. Conversation IDs are not used.",
+  "使用规则模式": "Use rule mode",
+  "勾选：返回 ai-message 和 rules；取消：返回 ai-message 和完整 code。只有消息时不修改脚本。": "Checked: return ai-message and rules. Unchecked: return ai-message and complete code. Message-only replies leave the script unchanged.",
+  "勾选（默认）：AI 返回解释和完整规则，由插件生成 Python，适合常规提取。\n\n不勾选：AI 返回解释和完整 Python，适合复杂处理，需查看代码并调试。两种模式都可以只回复消息，不修改脚本。": "Checked (default): AI returns an explanation and complete rules; the add-on generates Python for standard extraction.\n\nUnchecked: AI returns an explanation and complete Python for complex processing. Review and debug the code. Both modes allow message-only replies without changing the script.",
+  "编辑脚本": "Edit script",
+  "请先保存当前脚本，再打开编辑。": "Save the current script before opening it for editing.",
+  "请先生成并保存脚本，再打开编辑。": "Generate and save a script before opening it for editing.",
+  "已用文本编辑器打开脚本。保存文件后，下次发送或调试会重新读取。": "Opened the script in a text editor. Save the file; it will be reread before the next request or debug run.",
+  "无法打开文本编辑器，请检查脚本文件和本机编辑器。": "Could not open a text editor. Check the script file and installed editor.",
+  "文件和当前预览都已修改，请先处理这两个版本，再继续发送或调试。": "Both the file and preview have changed. Resolve the two versions before sending or debugging.",
+  "无法读取编辑后的脚本：": "Could not read the edited script: "
 }

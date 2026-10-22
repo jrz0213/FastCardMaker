@@ -371,10 +371,11 @@ class DictManageDialog(Dialog):
             row['check_btn'].setChecked(b)
 
     def on_edit(self, path):
-        """调起系统默认程序打开单体脚本文件"""
+        """Open source explicitly in a text editor, not the .py file association."""
         logger.info(f"调用系统默认程序打开文件: [{path}]")
         try:
-            QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+            from ..utils.script_editor import open_script
+            open_script(path)
         except Exception as e:
             logger.error(f"编辑词典脚本文件失败: {str(e)}")
 

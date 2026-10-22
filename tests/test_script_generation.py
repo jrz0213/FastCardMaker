@@ -23,6 +23,115 @@ import test_modularization as support
 
 @unittest.skipUnless(real_soup and importlib.util.find_spec('PyQt6'), 'Qt/BeautifulSoup not installed')
 class ScriptGenerationTests(unittest.TestCase):
+    def test_ai_message_envelopes_support_rules_code_and_chat_without_execution(self):
+        module = self.host.load('gui.script_generator')
+        base = self.host.load('service.base')
+        fake = types.SimpleNamespace(support=True, builder=self.builder)
+        _, source = self.engine.render_script('sample.mdx', self.rules)
+        for mode, changes in ((True, {'rules': self.rules}), (False, {'code': source})):
+            with self.subTest(rule_mode=mode):
+                reply = json.dumps({'ai-message': '**已完成**', **changes})
+                with patch.object(base, 'MdxService', return_value=fake), \
+                        patch.object(module, 'request_ai_text', return_value=reply):
+                    result = module.Generation('sample.mdx', 'ai:test', [], self.names, return_json=mode).load_services()
+                self.assertNotIn('error', result, result)
+                self.assertIn('source', result)
+                self.assertEqual(result['record']['response'], reply)
+                with patch.object(base, 'MdxService', return_value=fake), \
+                        patch.object(module, 'request_ai_text', return_value='{"ai-message":"请确认需要的媒体类型。"}'):
+                    chat = module.Generation('sample.mdx', 'ai:test', [], self.names,
+                        message='Explain', current=result, return_json=mode).load_services()
+                self.assertTrue(chat['chat_only'])
+                self.assertNotIn('source', chat)
+                dialog = module.ScriptGeneratorDialog(None, 'sample.mdx')
+                self.host.widgets.append(dialog)
+                dialog.result = result
+                dialog.ready(chat)
+                self.assertIs(dialog.result, result)
+
+    def test_invalid_ai_reply_envelope_does_not_replace_script(self):
+        module = self.host.load('gui.script_generator')
+        base = self.host.load('service.base')
+        fake = types.SimpleNamespace(support=True, builder=self.builder)
+        for response in ('{"ai-message":{},"rules":{}}',
+                         '{"ai-message":"x","code":"print(1)"}',
+                         '{"ai-message":"x","rules":{},"code":"print(1)"}',
+                         '{"ai-message":"one","ai-message":"two"}'):
+            with self.subTest(response=response), patch.object(base, 'MdxService', return_value=fake), \
+                    patch.object(module, 'request_ai_text', return_value=response):
+                result = module.Generation('sample.mdx', 'ai:test', [], self.names, message='change').load_services()
+            self.assertIn('error', result)
+            self.assertNotIn('source', result)
+            self.assertEqual(result['record']['response'], response)
+
+    def test_ai_message_is_rendered_first_without_label_and_selected_as_one_raw_reply(self):
+        module = self.host.load('gui.script_generator')
+        dialog = module.ScriptGeneratorDialog(None, 'sample.mdx')
+        self.host.widgets.append(dialog)
+        message = '**完成**\n\n<script>must stay text</script>'
+        response = json.dumps({'ai-message': message, 'code': 'print("example")'}, ensure_ascii=False)
+        dialog.add_information({'kind': 'request', 'user_message': 'question', 'request': {}, 'response': response})
+        dialog.toggle_message(module.QUrl('toggle:0-assistant'))
+        text = dialog.conversation.toPlainText()
+        self.assertIn('完成', text)
+        self.assertNotIn('ai-message', text)
+        self.assertLess(text.index('完成'), text.index('code'))
+        dialog.send_selected.setChecked(True)
+        dialog.toggle_message(module.QUrl('select:0-assistant'))
+        self.assertEqual(dialog.selected_history(), [{'role': 'assistant', 'content': response}])
+        dialog.copy_selected_information()
+        self.assertIn(response, self.host.app.clipboard().text())
+        render = self.host.load('gui.script_message_view').render_body
+        html = render(message, message)
+        self.assertIn('<strong>', html)
+        self.assertNotIn('<script>', html)
+
+    def test_only_new_local_information_is_carried_after_latest_ai_reply(self):
+        information = self.host.load('service.script_information')
+        records = [
+            {'id': 'first', 'kind': 'request', 'user_message': 'one', 'response': '{"ai-message":"one"}', 'local': {'old': True}},
+            {'id': 'old-debug', 'kind': 'debug', 'error': 'already sent'},
+            {'id': 'second', 'kind': 'request', 'user_message': 'two', 'response': '{"ai-message":"two"}', 'local': {'fresh': True}},
+            {'id': 'new-debug', 'kind': 'debug', 'error': 'new problem'},
+            {'id': 'retry', 'kind': 'request', 'user_message': 'retry', 'response': '', 'state': 'failed', 'local': {'error': 'timeout'}}]
+        history, notes = information.selected_context(records)
+        self.assertEqual([note['id'] for note in notes], ['second', 'new-debug', 'retry'])
+        self.assertEqual(sum(turn['content'] == '{"ai-message":"one"}' for turn in history), 1)
+        self.assertEqual(information.selected_context(records, {'1-debug'})[1], [])
+        records.append({'id': 'third', 'kind': 'request', 'user_message': 'three', 'response': '{"ai-message":"done"}'})
+        self.assertEqual(information.selected_context(records)[1], [])
+
+    def test_script_editor_reads_saved_file_changes_without_running_them(self):
+        module = self.host.load('gui.script_generator')
+        editor = self.host.load('utils.script_editor')
+        path = Path(self.temp.name) / 'editable.py'
+        _, source = self.engine.render_script('sample.mdx', self.rules)
+        path.write_text(source, encoding='utf-8')
+        dialog = module.ScriptGeneratorDialog(None, 'sample.mdx', [path])
+        self.host.widgets.append(dialog)
+        with patch.object(editor, 'open_script') as opened:
+            dialog.edit_script()
+        opened.assert_called_once_with(path)
+        changed = 'raise RuntimeError("must not execute")\n' + source + '\n'
+        path.write_text(changed, encoding='utf-8')
+        self.assertTrue(dialog.sync_edited_script())
+        self.assertIn('must not execute', dialog.result['source'])
+        self.assertEqual(dialog.result['original']['source'], changed)
+        self.assertTrue(dialog.sync_edited_script())
+        dialog.result['source'] += '# unsaved AI preview\n'
+        dialog._result_saved = False
+        path.write_text(changed + '# external change\n', encoding='utf-8')
+        self.assertFalse(dialog.sync_edited_script())
+
+    def test_editing_a_py_file_uses_a_text_editor_not_the_file_association(self):
+        editor = self.host.load('utils.script_editor')
+        path = Path(self.temp.name) / 'source file.py'
+        path.write_text('raise RuntimeError("never execute")', encoding='utf-8')
+        with patch.object(editor.sys, 'platform', 'win32'), patch.object(editor.subprocess, 'Popen') as launch:
+            editor.open_script(path)
+        self.assertEqual(launch.call_args.args[0], ['notepad.exe', str(path.resolve())])
+        self.assertFalse(launch.call_args.kwargs.get('shell', False))
+
     def test_third_turn_splits_local_feedback_and_deduplicates_current_script(self):
         information = self.host.load('service.script_information')
         source = 'def parser():\n    return "value"\n'
@@ -32,9 +141,11 @@ class ScriptGenerationTests(unittest.TestCase):
             {'id': 'one', 'kind': 'request', 'user_message': 'first question', 'response': first_reply,
              'request': {'samples': [{'html': 'never repeat this old attachment'}]},
              'local': {'validation': 'passed', 'generated_script': source}},
-            {'id': 'debug-one', 'kind': 'debug', 'error': 'missing-image-unique'},
+            {'id': 'debug-one', 'kind': 'debug', 'error': 'old-missing-image'},
             {'id': 'two', 'kind': 'request', 'user_message': 'second question', 'response': second_reply,
-             'request': {'local_information': [{'error': 'must not recursively repeat'}]}}
+             'request': {'local_information': [{'error': 'must not recursively repeat'}]},
+             'local': {'validation': 'passed', 'generated_script': source}},
+            {'id': 'debug-two', 'kind': 'debug', 'error': 'missing-image-unique'}
         ]
         history, notes = information.selected_context(records)
         self.assertEqual([turn['role'] for turn in history], ['user', 'assistant', 'user', 'assistant'])
@@ -56,7 +167,8 @@ class ScriptGenerationTests(unittest.TestCase):
             self.assertEqual(json.dumps(payload).count('missing-image-unique'), 1)
             self.assertNotIn('never repeat this old attachment', json.dumps(payload))
             self.assertNotIn('must not recursively repeat', json.dumps(payload))
-        selected_history, selected_notes = information.selected_context(records, {'0-assistant', '1-debug'})
+            self.assertNotIn('old-missing-image', json.dumps(payload))
+        selected_history, selected_notes = information.selected_context(records, {'0-assistant', '3-debug'})
         self.assertEqual(selected_history, [{'role': 'assistant', 'content': first_reply}])
         self.assertEqual(len(selected_notes), 1)
         self.assertEqual(selected_notes[0]['kind'], 'debug')

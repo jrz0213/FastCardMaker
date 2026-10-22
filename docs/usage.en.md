@@ -149,7 +149,7 @@ Click **AI parse** beside the dictionary. Use your separate Dictionary parsing p
 
 ![Samples, command and output mode](images/user-guide/en-script-generator.png)
 
-**Return JSON rules** is checked by default: AI describes extraction rules and the add-on generates Python, suitable for standard extraction. Uncheck it for complete Python that can handle complex paths or restructure nested content. Both modes save `.py` files, with matching instructions used for generation and follow-up messages.
+**Use rule mode** is checked by default: AI returns an explanation and complete rules; the add-on generates Python for standard extraction. Uncheck it for complete Python that can handle complex paths or nested content. Both modes wrap replies in JSON: `ai-message` contains the explanation, with changes in `rules` or `code`. Message-only replies keep the script unchanged. Changes update the preview first; **Save script** writes the `.py` file.
 
 Direct Python output receives syntax and structure checks during generation. Clicking Debug or loading a saved script executes code; passing checks does not guarantee correct results.
 
@@ -159,11 +159,14 @@ Direct Python output receives syntax and structure checks during generation. Cli
 
 ![Messages, debug results and follow-up input](images/user-guide/en-script-information.png)
 
-- **Include all messages** is selected by default. **Include checked messages** carries only checked items; new messages start unchecked. User and AI messages form the ordered conversation history. Debug reports and other local information are attached to the current request. Old attachments are not recursively repeated, and identical scripts in history and current attachments use references instead of duplicate source text.
+- **Include all messages** is selected by default. **Include checked messages** carries checked items; new messages start unchecked. User and AI messages form the ordered history. Only local processing and debug information from the latest AI reply onward is attached to the current request; older information remains available to view and copy without being attached again. Identical scripts use references instead of duplicate source text.
+- The AI explanation appears first with Markdown formatting and no `ai-message` label; the remaining JSON follows. Each reply has one checkbox. Copying or sending history keeps the complete original reply without duplicating its explanation.
 - Messages show timestamps and fold after five lines. Use **Expand / Collapse** after a message. Check messages to **Copy selected content**, or use **Copy all / Export Markdown**.
 - **Import conversation** reads TXT or Markdown as reference context. Messages are not saved automatically; export before closing if you want to keep them.
 
 The history selection applies both to **Send message** and to generating from the three entries again. Ordinary AI flashcard generation does not carry this conversation history. History and source code increase token use. For long conversations, include fewer checked messages or close the window and start again. Review each AI revision and **Save script** to apply it.
+
+For manual changes, save the script and click **Edit script** to open the `.py` in a text editor. After saving the file, the next request or debug run rereads it. If both the file and an unsaved preview have changed, resolve those versions before continuing.
 
 ### Choose script versions and restore an earlier one
 

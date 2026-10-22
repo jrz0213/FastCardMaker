@@ -29,14 +29,14 @@ arbitrary code, or request invented/transformed content unsupported by these rul
 If requested_fields is empty, infer up to twelve meaningful exported field names
 from user_command, including requested fields that are unavailable. Do not add
 unrelated fields. Field names must be distinct, nonempty and at most 60 characters.
-Return only JSON: {"fields": [{"name": "requested field name", "selector": "CSS selector",
+The complete rules object is {"fields": [{"name": "requested field name", "selector": "CSS selector",
 "format": "text or html", "limit": 10}], "unavailable": ["requested field names"]}.
 When requested_fields is supplied, every requested name must appear exactly once
 in fields or unavailable. Otherwise use the names inferred from the command. Use stable,
 specific CSS selectors based only on the supplied samples. Avoid positional selectors
 and entry-specific text. Use format html for fragments containing sound/image links.
 Use format text for plain text. limit must be an integer from 1 to 50. Mark a field
-unavailable if no reliable selector can be inferred. Return no Python, prose or fences.
+unavailable if no reliable selector can be inferred. Return no Python or text outside JSON.
 For audio whose path is transformed by the dictionary's shared JavaScript, use
 format "audio" and add "audio": {"attribute": "data-id", "steps": [...]} to that field.
 Allowed steps only: {"op":"prefix","value":"audio/"}, {"op":"suffix","value":".mp3"},
@@ -88,6 +88,13 @@ INSTRUCTIONS += '''\nlocal_information contains local validation/debug observati
 current user request, not earlier user or assistant turns. source_reference and
 generated_script_reference point to an identical script already included in selected
 history or current attachments; reuse that source without asking for another copy.'''
+INSTRUCTIONS += '''\nReply protocol for every turn: return one JSON object, without Markdown fences.
+For a rules change use {"ai-message":"explanation to the user", "rules":{...complete rules...}}.
+For normal conversation, questions, clarification or no change, use only
+{"ai-message":"your answer"}; omit rules so the current script stays unchanged.
+ai-message may contain Markdown. Never put a partial patch in rules. Do not return code.
+Do not claim to have executed or saved the script. Local observations before the
+latest AI reply are already in prior context; only new local information is attached.'''
 
 
 def resolve_entry(builder, word, cancelled=None):

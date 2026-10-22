@@ -32,9 +32,6 @@ def build_controls(dialog, layout):
         '旧脚本仅在本机保留七天，恢复为当前脚本后才参与备份。\n\n'
         'API Key 只保存在本机系统凭证库，不参与同步和备份；换设备后重新填写。'
         '导入缺少密钥的备份不会清空已有密钥。导出只包含已保存的配置，当前页面的修改需要先点击确定保存。')))
-    dialog.backup_api_keys = QCheckBox(dialog)
-    dialog.backup_api_keys.setChecked(False)
-    dialog.backup_api_keys.hide()
     box.addWidget(QLabel(tr('API Key 仅存本机系统凭证库，不参与同步和备份。')))
     dialog.backup_manual = QWidget()
     buttons = QHBoxLayout(dialog.backup_manual)

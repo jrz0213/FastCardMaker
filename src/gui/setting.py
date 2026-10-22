@@ -246,7 +246,6 @@ class SettingDialog(Dialog):
     def reset(self):
         from .backup_controls import choose_mode
         choose_mode(self, 'auto')
-        self.backup_api_keys.setChecked(False)
         self.language_combo.setCurrentIndex(0)
         self.ai_send_mode.setCurrentIndex(0)
         self.ai_rate.setValue(29)
@@ -273,7 +272,6 @@ class SettingDialog(Dialog):
         selected = [self.auto_models.item(i).data(Qt.ItemDataRole.UserRole) for i in range(self.auto_models.count()) if self.auto_models.item(i).checkState() == Qt.CheckState.Checked]
         return {
             'backup_mode': self._backup_mode,
-            'backup_api_keys': self.backup_api_keys.isChecked(),
             'ui_language': self.language_combo.currentData(),
             'ai_send_mode': self.ai_send_mode.currentData(),
             'ai_markdown': self.ai_markdown.isChecked(),
@@ -297,8 +295,7 @@ class SettingDialog(Dialog):
                 return False
         try:
             config.update({'backup_mode': self._backup_mode})
-            save_transport(self.ai_rate.value(), self.ai_timeout.value(), self.ai_connect_timeout.value(), self.ai_retries.value(),
-                           backup_api_keys=self.backup_api_keys.isChecked())
+            save_transport(self.ai_rate.value(), self.ai_timeout.value(), self.ai_connect_timeout.value(), self.ai_retries.value())
         except ValueError as error:
             QMessageBox.warning(self, tr('AI 设置'), str(error))
             return False

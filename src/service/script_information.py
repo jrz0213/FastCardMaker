@@ -25,7 +25,8 @@ def hide_local_paths(value, dictionary_path):
     def clean(item):
         if isinstance(item, str):
             for root, label in sorted(roots, key=lambda pair: len(pair[0]), reverse=True):
-                for spelling in {root, root.replace('\\', '/'), root.replace('/', '\\')}:
+                for spelling in {root, root.replace('\\', '/'), root.replace('/', '\\'),
+                                 json.dumps(root, ensure_ascii=False)[1:-1]}:
                     if len(spelling) > 3:
                         item = item.replace(spelling, label)
             return item

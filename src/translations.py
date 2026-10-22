@@ -4,6 +4,13 @@ from .lang import _cl
 from .i18n import translate
 
 MESSAGES = {
+    'AI 连接超时，请检查网络、代理和 API 地址，或增加连接超时。': 'AI connection timed out. Check the network, proxy and API URL, or increase the connection timeout.',
+    '等待 AI 回复超时。可增加请求超时，或减少附件和历史消息后重试；本次未自动重发。': 'Timed out waiting for the AI reply. Increase the request timeout or reduce attachments and history before retrying. This request was not resent automatically.',
+    'AI 请求超时，请检查网络或增加请求超时；本次未自动重发。': 'AI request timed out. Check the network or increase the request timeout. This request was not resent automatically.',
+    '正在等待 AI；携带 %s 条历史消息，请求正文约 %s 个字符（字符数不是 Token 数）。': 'Waiting for AI; including %s history messages, approximately %s request characters (not tokens).',
+    '描述希望提取或修复的内容，留空使用默认要求。': 'Describe what to extract or repair. Leave blank to use the default request.',
+    '提取词典已有的释义、音标、例句和发音。结合 HTML、JS 和原脚本分析结构；仅在需要时修复音频路径，保留已正常工作的处理。不要添加无关字段；无法确定的内容不要猜测。': 'Extract existing definitions, pronunciation, examples and audio. Analyze the HTML, JS and original parser; repair audio paths only when necessary and preserve working behavior. Do not add unrelated fields or guess missing content.',
+    '勾选（默认）：AI 返回 JSON 规则，由插件生成 Python 脚本。适合常规提取和简单音频路径修复，可预览结果，复杂逻辑受规则限制。\n\n不勾选：AI 直接生成 Python 脚本。适合嵌套内容和复杂处理，灵活性更高；生成时只检查语法和结构，需查看代码并调试。': 'Checked (default): AI returns JSON rules and the add-on generates Python. Suitable for standard extraction and simple audio repairs, with previews; complex logic is limited by the rule format.\n\nUnchecked: AI generates Python directly. More flexible for nested content and complex processing. Generation checks syntax and structure only; review and debug the code.',
     '刷新来源': 'Refresh sources',
     '正在后台加载内容来源…': 'Loading content sources in the background…',
     '正在后台加载内容来源：%s / %s': 'Loading content sources: %s / %s',

@@ -23,6 +23,60 @@ import test_modularization as support
 
 @unittest.skipUnless(real_soup and importlib.util.find_spec('PyQt6'), 'Qt/BeautifulSoup not installed')
 class ScriptGenerationTests(unittest.TestCase):
+    def test_generation_and_chat_both_respect_history_selection(self):
+        module = self.host.load('gui.script_generator')
+        for chat in (False, True):
+            for selected in (False, True):
+                with self.subTest(chat=chat, selected=selected):
+                    dialog = module.ScriptGeneratorDialog(None, 'sample.mdx')
+                    self.host.widgets.append(dialog)
+                    dialog.add_information({'kind': 'request', 'user_message': 'earlier question',
+                                            'request': {}, 'response': 'earlier reply'})
+                    if selected:
+                        dialog.send_selected.setChecked(True)
+                        dialog.toggle_message(module.QUrl('select:0-assistant'))
+                    with patch.object(module, 'ScriptOperationThread'), \
+                            patch.object(module, 'Generation', wraps=module.Generation) as generation:
+                        dialog._begin_request('follow up' if chat else '')
+                    expected = [{'role': 'assistant', 'content': 'earlier reply'}]
+                    if not selected:
+                        expected.insert(0, {'role': 'user', 'content': 'earlier question'})
+                    self.assertEqual(generation.call_args.kwargs['history'], expected)
+                    dialog.loader = None
+
+    def test_output_help_only_explains_the_two_formats(self):
+        module = self.host.load('gui.script_generator')
+        dialog = module.ScriptGeneratorDialog(None, 'sample.mdx')
+        self.host.widgets.append(dialog)
+        content = []
+        def inspect_help(window):
+            content.append(window.findChild(module.QTextBrowser).toPlainText())
+        with patch.object(module.Dialog, 'exec', inspect_help):
+            dialog.show_output_help()
+        self.assertIn('勾选（默认）', content[0])
+        self.assertIn('不勾选', content[0])
+        self.assertNotIn('信息历史', content[0])
+        self.assertLess(len(content[0]), 240)
+
+    def test_history_paths_are_hidden_and_messages_are_counted_individually(self):
+        module = self.host.load('gui.script_generator')
+        base = self.host.load('service.base')
+        fake = types.SimpleNamespace(support=True, builder=self.builder)
+        local_root = str(Path('sample.mdx').resolve().parent)
+        history = [{'role': 'user', 'content': local_root + '/parser.py'},
+                   {'role': 'assistant', 'content': 'earlier reply'},
+                   {'role': 'user', 'content': json.dumps({'traceback': local_root + '\\parser.py'})}]
+        with patch.object(base, 'MdxService', return_value=fake), \
+                patch.object(module, 'request_ai_text', return_value=json.dumps(self.rules)) as request:
+            result = module.Generation('sample.mdx', 'ai:test', [], self.names, history=history).load_services()
+        self.assertNotIn('error', result, result)
+        sent = request.call_args.kwargs['history']
+        self.assertNotIn(local_root, sent[0]['content'])
+        self.assertIn('parser.py', sent[0]['content'])
+        self.assertNotIn(json.dumps(local_root)[1:-1], sent[2]['content'])
+        self.assertEqual(result['record']['context']['history_messages'], 3)
+        self.assertEqual(history[0]['content'], local_root + '/parser.py')
+
     def test_python_response_is_checked_without_execution_and_prompts_follow_mode(self):
         module = self.host.load('gui.script_generator')
         base = self.host.load('service.base')
@@ -383,7 +437,7 @@ class Original(MdxService):
         self.host.widgets.append(dialog)
         self.assertFalse(hasattr(dialog, 'fields'))
         self.assertEqual([edit.text() for edit in dialog.words], ['concept', 'maintain', 'relevant'])
-        self.assertIn('纠正发音结构', dialog.command.toPlainText())
+        self.assertIn('仅在需要时修复音频路径', dialog.command.toPlainText())
         dialog.profile_combo.addItem('Test AI', 'ai:test')
         dialog.profile_combo.setCurrentIndex(dialog.profile_combo.findData('ai:test'))
         with patch.object(module, 'Generation') as generation, patch.object(module, 'ScriptOperationThread', return_value=Mock()):

@@ -163,7 +163,7 @@ Direct Python output receives syntax and structure checks during generation. Cli
 - Messages show timestamps and fold after five lines. Use **Expand / Collapse** after a message. Check messages to **Copy selected content**, or use **Copy all / Export Markdown**.
 - **Import conversation** reads TXT or Markdown as reference context. Messages are not saved automatically; export before closing if you want to keep them.
 
-History and source code increase token use. For long conversations, include fewer checked messages or close the window and start again. Review each AI revision and **Save script** to apply it.
+The history selection applies both to **Send message** and to generating from the three entries again. History and source code increase token use. For long conversations, include fewer checked messages or close the window and start again. Review each AI revision and **Save script** to apply it.
 
 ### Choose script versions and restore an earlier one
 

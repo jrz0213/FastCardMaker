@@ -63,8 +63,12 @@ class RefactorTests(unittest.TestCase):
             setattr(qt, name, HostObject)
         qt.Qt = types.SimpleNamespace(ItemFlag=types.SimpleNamespace(ItemIsEnabled=1))
         add('aqt.utils', showInfo=Mock())
-        add('requests', Session=Mock(), get=Mock(), post=Mock(),
-            RequestException=type('RequestException', (Exception,), {}))
+        request_error = type('RequestException', (Exception,), {})
+        timeout_error = type('Timeout', (request_error,), {})
+        add('requests', Session=Mock(), get=Mock(), post=Mock(), RequestException=request_error,
+            exceptions=types.SimpleNamespace(Timeout=timeout_error,
+                ConnectTimeout=type('ConnectTimeout', (timeout_error,), {}),
+                ReadTimeout=type('ReadTimeout', (timeout_error,), {})))
         add('bs4', BeautifulSoup=Mock())
         add(PACKAGE + '.gui.base', Dialog=HostObject, WIDGET_SIZE=Mock())
         add(PACKAGE + '.gui.setting', SettingDialog=Mock())

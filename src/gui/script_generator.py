@@ -30,7 +30,7 @@ from ..service.script_information import request_record, redact, compact_history
 from ..service.script_debug import debug_exports
 from ..service.python_scripts import PYTHON_INSTRUCTIONS, parse_python
 
-DEFAULT_COMMAND = '提取释义、音标、例句和发音；纠正发音结构，结合词典 JS 还原真实音频路径，导入媒体库后同步更新播放引用。只提取词典已有内容。'
+DEFAULT_COMMAND = '提取词典已有的释义、音标、例句和发音。结合 HTML、JS 和原脚本分析结构；仅在需要时修复音频路径，保留已正常工作的处理。不要添加无关字段；无法确定的内容不要猜测。'
 
 
 CHAT_INSTRUCTIONS = INSTRUCTIONS.replace('Return only JSON:', 'When changing extraction rules, return only JSON:').replace(
@@ -131,11 +131,11 @@ class Generation:
             prompt_data = hide_local_paths(prompt_data, self.path)
             prompt = json.dumps(prompt_data, ensure_ascii=False)
             instructions = (CHAT_INSTRUCTIONS if self.message else INSTRUCTIONS) if self.return_json else PYTHON_INSTRUCTIONS
-            history = redact(self.history, self.connection.key)
+            history = hide_local_paths(redact(self.history, self.connection.key), self.path)
             payload = request_payload(self.connection.profile, prompt, instructions, history=history)
             record = request_record(self.connection.profile.get('model', ''), instructions, prompt_data, payload,
                                     self.message or self.command, dictionary_identity(self.path))
-            record['context'] = {'history_turns': len(history) // 2, 'request_characters': len(json.dumps(payload, ensure_ascii=False)),
+            record['context'] = {'history_messages': len(history), 'request_characters': len(json.dumps(payload, ensure_ascii=False)),
                                  'attachments_not_repeated_in_history': True}
             record = self._record(record)
             if self.on_prepared:
@@ -197,6 +197,8 @@ class Generation:
             return result
         except Exception as error:
             detail = {'error_type': type(error).__name__, 'error': str(error), 'traceback': traceback.format_exc()}
+            if isinstance(error, AIError):
+                detail['error_code'] = error.code
             if record:
                 record.update(state='failed', error=str(error), local={**record.get('local', {}), **detail})
                 record = self._record(record)
@@ -306,7 +308,7 @@ class ScriptGeneratorDialog(Dialog):
         form.addRow(tr('三个样本词'), words)
         self.command = QPlainTextEdit()
         self.command.setPlainText(tr(DEFAULT_COMMAND))
-        self.command.setPlaceholderText(tr('直接描述希望 AI 提取什么。留空使用默认命令，包括纠正发音结构。'))
+        self.command.setPlaceholderText(tr('描述希望提取或修复的内容，留空使用默认要求。'))
         self.command.setMinimumHeight(75)
         self.command.setMaximumHeight(100)
         self.command.setInputMethodHints(Qt.InputMethodHint.ImhNone)
@@ -444,7 +446,7 @@ class ScriptGeneratorDialog(Dialog):
         self._operation_kind = 'chat' if message else 'generate'
         operation = Generation(self.dict_path, unique, words, None, command, attachments,
                                self.script_paths, self.class_name,
-                               history=self.selected_history() if message else [],
+                               history=self.selected_history(),
                                message=message, current=self.result, debug=False,
                                record_directory=None,
                                debug_result=None, session_id=self.session_id,
@@ -471,8 +473,8 @@ class ScriptGeneratorDialog(Dialog):
             return
         self.add_information(record)
         context = record.get('context', {})
-        self.status.setText(tr('正在等待 AI；携带 %s 轮历史，请求正文约 %s 个字符（字符数不是 Token 数）。') %
-                            (context.get('history_turns', 0), context.get('request_characters', 0)))
+        self.status.setText(tr('正在等待 AI；携带 %s 条历史消息，请求正文约 %s 个字符（字符数不是 Token 数）。') %
+                            (context.get('history_messages', 0), context.get('request_characters', 0)))
 
     def begin_debug(self):
         if self.loader or not self.result or self.token != profile_token():
@@ -793,25 +795,10 @@ class ScriptGeneratorDialog(Dialog):
                 widget.setEnabled(True)
 
     def show_output_help(self):
-        content = tr(
-            '在“命令”中描述需求；解析不使用连接的 Skill。默认样本各选名词、动词、形容词，'
-            '找不到时自动选备选词。附件按勾选发送，缺失的跳过，JS 和原脚本去重。\n\n'
-            '勾选（默认）：AI 返回 JSON 规则，插件生成 Python 脚本。'
-            '适合常规字段提取和支持的音频路径修复；格式统一，可检查规则并预览提取结果，'
-            '但不能自由编写复杂逻辑。\n\n'
-            '不勾选：AI 直接返回完整 Python 脚本。'
-            '适合嵌套内容重组、复杂音频路径处理和修改原脚本，灵活性更高。'
-            '生成时仅检查语法和结构，不代表运行正确或安全；'
-            '查看源码后点击“调试”运行测试；保存后加载脚本也会执行代码。\n\n'
-            '两种方式最终保存的都是 .py 脚本。新脚本默认不启用；更新原脚本先备份旧版。\n\n'
-            '信息历史只保留在当前窗口，关闭后不保存；可主动复制或导出 Markdown。'
-            '可导入 TXT／Markdown 对话作为上下文。默认“携带全部消息”；选择“携带勾选的消息”时只发送右侧勾选的消息，未勾选则不携带历史。'
-            '新消息默认不勾选。携带历史会增加 Token 消耗，过长可能超过模型限制；用户消息的附件只在当前请求中发送。\n\n'
-            '每次点击“调试”检查三个样本，详情显示在信息历史。消息右侧勾选框用于选择复制，展开按钮在消息后面。'
-            '点击“恢复旧脚本”查看名称与删除时间，在列表中选择恢复或只读打开；旧版本保留七天。'
-            '关闭窗口会停止接收本次结果；已经发出的请求仍可能产生费用。')
+        content = tr('勾选（默认）：AI 返回 JSON 规则，由插件生成 Python 脚本。适合常规提取和简单音频路径修复，可预览结果，复杂逻辑受规则限制。\n\n'
+                     '不勾选：AI 直接生成 Python 脚本。适合嵌套内容和复杂处理，灵活性更高；生成时只检查语法和结构，需查看代码并调试。')
         dialog = Dialog(self, tr('输出方式说明'))
-        dialog.resize(660, 480)
+        dialog.resize(560, 240)
         layout = QVBoxLayout(dialog)
         viewer = QTextBrowser()
         viewer.setPlainText(content)

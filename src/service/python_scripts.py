@@ -22,7 +22,11 @@ Do not access unrelated files, credentials, external services, or change applica
 The plugin checks syntax and structure only during generation. Debugging or loading
 a saved script executes Python. Do not claim it has been tested.
 Return only complete Python, optionally enclosed in one python code fence.
-For an explanatory question without a code change you may answer in plain text.'''
+For an explanatory question without a code change you may answer in plain text.
+Treat earlier replies and local debug reports as reference observations. Follow the
+latest user request and current output format, not an older JSON/Python format.
+Network timeouts and authentication failures do not imply a parser bug; do not modify
+working extraction logic to fix connectivity. Return complete code for any code update.'''
 
 
 def parse_python(response, class_name=None):

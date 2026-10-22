@@ -11,6 +11,21 @@ import test_modularization as support
 
 
 class AITests(unittest.TestCase):
+    def test_transport_failures_are_distinct_safe_and_not_retried(self):
+        ai = self.load('service.ai')
+        requests = sys.modules['requests']
+        for exception, code in [(requests.exceptions.ConnectTimeout, 'connect_timeout'),
+                                (requests.exceptions.ReadTimeout, 'read_timeout'),
+                                (requests.exceptions.Timeout, 'timeout'),
+                                (requests.RequestException, 'connection')]:
+            with self.subTest(code=code), patch.object(ai, '_requests_limit', Mock(acquire=Mock(return_value=True))), \
+                    patch.object(requests, 'post', side_effect=exception('secret-detail')) as post:
+                with self.assertRaises(ai.AIError) as error:
+                    ai.request_ai_text(self.unique, 'test', '')
+                self.assertEqual(error.exception.code, code)
+                self.assertNotIn('secret-detail', str(error.exception))
+                self.assertEqual(post.call_count, 1)
+
     def test_endpoint_selects_protocol_even_when_legacy_mode_disagrees(self):
         params = self.load('service.ai_support.parameters')
         for suffix, mode in [('responses', 'responses'), ('chat/completions', 'chat'),

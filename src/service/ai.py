@@ -237,6 +237,12 @@ def _request_text(unique, prompt, cancelled=None, output_instructions='', connec
         data = response.json()
         diagnostics.usage(data, mode)
         text = response_text(data, mode)
+    except requests.exceptions.ConnectTimeout:
+        raise AIError(tr('AI 连接超时，请检查网络、代理和 API 地址，或增加连接超时。'), code='connect_timeout') from None
+    except requests.exceptions.ReadTimeout:
+        raise AIError(tr('等待 AI 回复超时。可增加请求超时，或减少附件和历史消息后重试；本次未自动重发。'), code='read_timeout') from None
+    except requests.exceptions.Timeout:
+        raise AIError(tr('AI 请求超时，请检查网络或增加请求超时；本次未自动重发。'), code='timeout') from None
     except requests.RequestException:
         raise AIError(tr('AI 请求超时或连接失败，请检查网络和 API 地址。'), code='connection') from None
     except (KeyError, TypeError, AttributeError):

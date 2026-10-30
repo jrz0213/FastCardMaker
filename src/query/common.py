@@ -47,7 +47,10 @@ def inspect_note(note, mappings=None):
     if mappings is None:
         conf = config.get_maps(note.note_type()['id'])
         maps_list = {'list': [conf], 'def': 0} if isinstance(conf, list) else conf
-        maps = maps_list['list'][maps_list['def']]
+        choices = maps_list.get('list', [])
+        selected = maps_list.get('def', 0)
+        selected = selected if type(selected) is int and 0 <= selected < len(choices) else 0
+        maps = choices[selected] if choices else []
         maps = maps if isinstance(maps, list) else maps['fields']
     else:
         maps = mappings
@@ -260,7 +263,16 @@ def query_flds(note, fileds=None, cancelled=None, include_ai=True, mappings=None
                     if (type(field_order) is not int or field_order < 0 or
                             isinstance(fields, (list, tuple)) and field_order >= len(fields)):
                         raise ValueError(tr('词典字段不可用，请手动选择有效字段。'))
-                    collect(target, mapping, service.active(field_order, word))
+                    value = service.active(field_order, word)
+                    failure = getattr(service, 'last_error', '')
+                    content = value.get('result', '') if isinstance(value, dict) else value
+                    if failure and not content:
+                        # A transport failure is different from a successful empty
+                        # lookup, even when force-update permits clearing fields.
+                        result.errors.append(tr('笔记 %s · 字段 %s · %s') %
+                            (getattr(note, 'id', None) or '-', note.note_type()['flds'][target]['name'], failure))
+                        continue
+                    collect(target, mapping, value)
                 except Exception as error:
                     result.errors.append(str(error))
                     logger.warning('Dictionary field failed: %s', error)

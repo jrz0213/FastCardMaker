@@ -38,6 +38,8 @@ def start_here():
     config.activate_profile()
     from .service.ai_support.migration import migrate_plaintext
     migrate_plaintext()
+    from .service.ai_config import migrate_stream_defaults
+    migrate_stream_defaults()
     from . import common as fastcm
     from .utils.logger import set_logging_state  # 引入底层日志控制接口
     
@@ -68,6 +70,10 @@ addHook("profileLoaded", start_here)
 
 
 def _close_profile():
+    from aqt import mw
+    deck_creator = getattr(mw, '_fwq_deck_creator', None)
+    if deck_creator is not None:
+        deck_creator.close()
     from .gui.type_query import close_type_queries
     close_type_queries()
     from aqt import mw

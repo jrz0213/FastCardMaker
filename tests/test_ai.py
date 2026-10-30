@@ -151,7 +151,7 @@ class AITests(unittest.TestCase):
         self.assertEqual(body['input'], 'original prompt')
         self.assertEqual(body['content'], '继续上文')
         self.assertEqual(body['top_p'], 1)
-        for invalid in ('[]', '{invalid', '{"top_p":NaN}', '{"messages":[]}', '{"stream":true}'):
+        for invalid in ('[]', '{invalid', '{"top_p":NaN}', '{"messages":[]}', '{"stream":"true"}'):
             with self.assertRaises(ValueError):
                 params.parse_parameters(invalid)
         self.assertEqual(params.parse_parameters('{}'), {})
@@ -423,7 +423,7 @@ class AITests(unittest.TestCase):
             profile = self.settings.new_profile(provider)
             self.assertEqual(profile['mode'], 'responses')
             self.assertTrue(profile['base_url'].endswith('/responses'))
-            self.assertEqual(profile['parameters'], {'temperature': 1, 'reasoning': {'effort': 'none'}})
+            self.assertEqual(profile['parameters'], {'temperature': 1, 'stream': True, 'reasoning': {'effort': 'none'}})
             profile['parameters']['reasoning']['effort'] = 'high'
             self.assertEqual(ai.request_payload(profile, 'hi')['reasoning']['effort'], 'high')
         qwen = self.settings.new_profile('qwen')
@@ -485,6 +485,53 @@ class AITests(unittest.TestCase):
                 ai.query_ai(self.unique, 'hello', {})
         self.assertNotIn('test-session-key', str(error.exception))
         self.assertIn('401', str(error.exception))
+
+    def test_failure_has_stage_request_id_and_safe_server_reason(self):
+        ai = self.load('service.ai')
+        response = Mock(status_code=400)
+        response.json.return_value = {'error': {'code': 'unsupported_parameter', 'type': 'invalid_request_error',
+            'param': 'reasoning.effort', 'message': 'private-prompt-content test-session-key'}}
+        with self.assertLogs('refactor_tests', level='WARNING') as captured, \
+                patch.object(ai, '_send', return_value=response), patch.object(ai, 'render_prompt', return_value='hello'):
+            with self.assertRaises(ai.AIError) as raised:
+                ai.query_ai(self.unique, 'hello', {})
+        error = raised.exception
+        self.assertEqual(error.stage, 'response')
+        self.assertEqual(error.code, 'http_400')
+        self.assertEqual(len(error.request_id), 10)
+        self.assertIn('unsupported_parameter', str(error))
+        self.assertIn('reasoning.effort', str(error))
+        for secret in ('test-session-key', 'private-prompt-content'):
+            self.assertNotIn(secret, str(error) + '\n'.join(captured.output))
+
+    def test_reply_failures_distinguish_length_filter_and_invalid_json(self):
+        ai = self.load('service.ai')
+        for data, mode, code in (
+                ({'choices': [{'finish_reason': 'length'}]}, 'chat', 'output_limit'),
+                ({'choices': [{'finish_reason': 'content_filter'}]}, 'chat', 'content_filter'),
+                ({'type': 'message', 'stop_reason': 'max_tokens'}, 'messages', 'output_limit'),
+                ({'status': 'incomplete', 'incomplete_details': {'reason': 'max_output_tokens'}}, 'responses', 'incomplete_response')):
+            with self.subTest(mode=mode, code=code), self.assertRaises(ai.AIError) as raised:
+                ai.response_text(data, mode)
+            self.assertEqual(raised.exception.code, code)
+        response = Mock(status_code=200)
+        response.json.side_effect = ValueError('private server response')
+        with patch.object(ai, '_send', return_value=response), patch.object(ai, 'render_prompt', return_value='hello'):
+            with self.assertRaises(ai.AIError) as raised:
+                ai.query_ai(self.unique, 'hello', {})
+        self.assertEqual(raised.exception.code, 'invalid_json')
+        self.assertEqual(raised.exception.stage, 'response')
+
+    def test_unexpected_failure_logs_location_without_arbitrary_exception_content(self):
+        diagnostics = self.load('service.ai_support.diagnostics')
+        try:
+            raise RuntimeError('private-key-and-prompt')
+        except RuntimeError as error:
+            detail = diagnostics.failure_detail(error, 'save')
+        self.assertIn('RuntimeError', detail)
+        self.assertIn('test_ai.py:', detail)
+        self.assertIn('保存字段', detail)
+        self.assertNotIn('private-key-and-prompt', detail)
 
     def test_markdown_basics_and_escaping(self):
         convert = self.load('utils.markdown').markdown_to_html
@@ -686,7 +733,7 @@ class AITests(unittest.TestCase):
                 with self.assertRaises(ai.AIError):
                     ai.query_ai(self.unique, 'hello', {})
             self.assertEqual(requests.post.call_count, retries + 1)
-            self.assertEqual(requests.post.call_args.kwargs['timeout'], (7, 90))
+            self.assertEqual(requests.post.call_args.kwargs['timeout'], (7, 600))
         requests.post.return_value = Mock(status_code=401, headers={})
         requests.post.reset_mock()
         with patch.object(ai, '_requests_limit', limiter), patch.object(ai, 'render_prompt', return_value='hello'):

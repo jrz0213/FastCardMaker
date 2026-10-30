@@ -18,10 +18,10 @@ def endpoint_protocol(address):
 
 def defaults(provider, mode):
     if mode == 'interactions':
-        return {'generation_config': {'temperature': 1, 'thinking_level': 'minimal'}}
+        return {'stream': True, 'generation_config': {'temperature': 1, 'thinking_level': 'minimal'}}
     if mode == 'messages':
-        return {'temperature': 1, 'thinking': {'type': 'disabled'}, 'max_tokens': 4096}
-    data = {'temperature': 1}
+        return {'stream': True, 'temperature': 1, 'thinking': {'type': 'disabled'}, 'max_tokens': 4096}
+    data = {'temperature': 1, 'stream': True}
     if provider in ('deepseek', 'claude') and mode == 'chat':
         data['thinking'] = {'type': 'disabled'}
     elif provider == 'qwen' and mode != 'responses':
@@ -52,8 +52,8 @@ def parse_parameters(value):
         raise ValueError(tr('自由参数包含无效的 JSON 值。')) from None
     if any(key in value for key in ('model', 'messages', 'input', 'instructions', 'system', 'system_instruction', 'api_key', 'authorization', 'headers')):
         raise ValueError(tr('模型、消息正文和认证由插件填写，请勿在自由参数中覆盖。'))
-    if value.get('stream', False) is not False:
-        raise ValueError(tr('当前仅支持非流式请求，stream 必须为 false。'))
+    if 'stream' in value and type(value['stream']) is not bool:
+        raise ValueError(tr('stream 必须为 true 或 false。'))
     return deepcopy(value)
 
 

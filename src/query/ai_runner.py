@@ -57,6 +57,8 @@ class AIQueryRunner:
         self.validation_errors = []
         self.was_cancelled = False
         self.errors = {}
+        self.error_details = []
+        self.failed_tasks = {}
         for note in notes:
             if mappings is None:
                 source, word, maps = inspect_note(note)
@@ -88,7 +90,10 @@ class AIQueryRunner:
                     validate_ai_references(mapping.get('ai_prompt', ''), maps, names)
                 except ValueError as error:
                     self.failed += 1
-                    self.validation_errors.append(str(error))
+                    detail = tr('笔记 %s · 字段 %s · %s') % (getattr(note, 'id', None) or '-', names[target], str(error))
+                    self.validation_errors.append(detail)
+                    self.failed_tasks[(id(note), names[target])] = (note, names[target], target, dict(mapping), dict(values), word)
+                    logger.warning('[AI] prompt_validation: %s', detail)
                     continue
                 self.tasks.append((note, names[target], target, dict(mapping), dict(values), word))
         self.requests = group_requests(self.tasks)
@@ -97,9 +102,9 @@ class AIQueryRunner:
     def apply(self, task, result):
         self.apply_many([task], {task[1]: result})
 
-    def apply_many(self, tasks, results):
+    def apply_many(self, tasks, results, allow_cancelled=False):
         """Prepare all values, then save the note once and roll back as a unit."""
-        if self.cancelled.is_set() or self._profile_token != profile_token():
+        if (self.cancelled.is_set() and not allow_cancelled) or self._profile_token != profile_token():
             return
         note = tasks[0][0]
         changes = []
@@ -138,6 +143,21 @@ class AIQueryRunner:
             raise
         self.updated_fields += len(changes)
         self.updated_notes.add(id(note))
+
+    def record_failure(self, error, tasks, stage='query'):
+        from ..service.ai_support.diagnostics import failure_detail
+        self.failed += 1
+        message = str(error) if isinstance(error, AIError) else tr('请求执行失败，请查看日志中的错误类别。')
+        self.errors[message] = self.errors.get(message, 0) + 1
+        if stage != 'save':
+            for task in tasks:
+                self.failed_tasks[(id(task[0]), task[1])] = task
+        detail = failure_detail(error, stage)
+        note = tasks[0][0]
+        detail = tr('笔记 %s · 字段 %s · %s') % (getattr(note, 'id', None) or '-',
+                                                ', '.join(task[1] for task in tasks), detail)
+        self.error_details.append(detail)
+        logger.error('[AI] %s', detail)
 
     def run(self, parent=None, progress=None, on_tick=None, report=True):
         if not self.requests:
@@ -191,20 +211,16 @@ class AIQueryRunner:
                     request = pending.pop(future)
                     completed += 1
                     if not self.cancelled.is_set():
+                        stage = 'query'
                         try:
                             result = future.result()
-                            try:
-                                if request.merged:
-                                    self.apply_many(request.tasks, result)
-                                else:
-                                    self.apply(request.tasks[0], result)
-                            except Exception:
-                                raise AIError(tr('字段保存失败，原内容已恢复。'), code='field_save') from None
+                            stage = 'save'
+                            if request.merged:
+                                self.apply_many(request.tasks, result)
+                            else:
+                                self.apply(request.tasks[0], result)
                         except Exception as error:
-                            self.failed += 1
-                            message = str(error) if isinstance(error, AIError) else tr('请求执行失败，请查看日志中的错误类别。')
-                            self.errors[message] = self.errors.get(message, 0) + 1
-                            logger.error('[AI] field failed category=%s', getattr(error, 'code', type(error).__name__))
+                            self.record_failure(error, request.tasks, stage)
                     if not self.cancelled.is_set():
                         submit()
                 progress.update(completed, self.failed)
@@ -233,7 +249,8 @@ class AIQueryRunner:
         reasons = dict(self.errors)
         for message in self.validation_errors:
             reasons[message] = reasons.get(message, 0) + 1
-        lines = ['%s × %s' % (count, message) for message, count in list(reasons.items())[:5]]
+        lines = (self.error_details + self.validation_errors)[:5] if self.error_details else [
+            '%s × %s' % (count, message) for message, count in list(reasons.items())[:5]]
         QMessageBox.warning(parent, tr('AI 查询失败汇总'),
                             tr('共 %s 项失败，原字段内容保留。\n\n%s') %
                             (self.failed, '\n'.join(lines)))

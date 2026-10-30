@@ -85,6 +85,10 @@ def browser_menu():
             action = QAction(tr('全类型查询'), browser)
             action.triggered.connect(lambda: show_type_query(browser))
             menu.addAction(action)
+            menu.addSeparator()
+            from .gui.deck_creator import show_deck_creator
+            menu.addAction(tr('AI 批量制卡'), show_deck_creator)
+            menu.addSeparator()
             # Options
             action = QAction(_('OPTIONS'), browser)
 
@@ -211,6 +215,10 @@ def config_menu():
     from .translations import text as tr
     menu = mw.menuBar().addMenu('FastCM')
     menu.addAction(tr('全类型查询'), lambda: show_type_query())
+    menu.addSeparator()
+    from .gui.deck_creator import show_deck_creator
+    menu.addAction(tr('AI 批量制卡'), show_deck_creator)
+    menu.addSeparator()
     menu.addAction(_('OPTIONS'), lambda: show_options())
     class MainProgressAction(TaskMenuAction):
         @pyqtSlot()
@@ -225,6 +233,7 @@ def config_menu():
                 super().open_progress()
     progress = MainProgressAction(menu)
     menu.addAction(progress)
+    menu.addSeparator()
     menu.addAction(_('ABOUT'), lambda: show_about_dialog(mw))
 
 

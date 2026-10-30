@@ -30,9 +30,26 @@ def new_profile(provider='custom'):
     name, address, mode = PRESETS[provider]
     return dict(id=uuid4().hex, name=name, provider=provider, base_url=address,
                 mode=mode, model='', temperature=1,
-                reasoning='none', timeout=90, skill='', skill_role='', responses_store=False,
+                reasoning='none', timeout=600, skill='', skill_role='', responses_store=False,
                 send_mode='field', connect_timeout=10, retries=2, endpoint_url=True,
                 parameters=parameter_defaults(provider, mode))
+
+
+def migrate_stream_defaults():
+    """Apply requested defaults once, preserving later manual overrides."""
+    data = read_settings()
+    if data.get('stream_defaults_version') == 1:
+        return
+    for profile in data.get('profiles', []):
+        profile['timeout'] = 600
+        parameters = profile.get('parameters')
+        if parameters is not None:
+            parameters = parse_parameters(parameters)
+            parameters['stream'] = True
+            profile['parameters'] = parameters
+    data.setdefault('transport', {})['timeout'] = 600
+    data['stream_defaults_version'] = 1
+    write_settings(data)
 
 
 def profiles():
@@ -89,7 +106,7 @@ def validate_profile(item):
         raise ValueError(tr('连接超时应为 1 到 60 秒。'))
     if type(item.get('retries', 2)) is not int or not 0 <= item.get('retries', 2) <= 5:
         raise ValueError(tr('自动重试次数应为 0 到 5。'))
-    if not 1 <= int(item.get('timeout', 90)) <= 600:
+    if not 1 <= int(item.get('timeout', 600)) <= 600:
         raise ValueError(tr('请求超时超出允许范围。'))
     if not isinstance(item.get('skill', ''), str):
         raise ValueError(tr('Skill 应为文本。'))
@@ -146,7 +163,7 @@ def transport_settings():
     old = next(iter(stored.get('profiles', [])), {})
     values = stored.get('transport', old)
     return {key: values.get(key, default) for key, default in
-            (('timeout', 90), ('connect_timeout', 10), ('retries', 2))}
+            (('timeout', 600), ('connect_timeout', 10), ('retries', 2))}
 
 
 def save_transport(rate, timeout, connect_timeout, retries, backup_api_keys=None):

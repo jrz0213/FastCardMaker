@@ -1,8 +1,8 @@
 """Editable model name with optional provider-specific reference choices."""
 
-from aqt.qt import QComboBox, QSignalBlocker
+from aqt.qt import QComboBox, QSignalBlocker, QInputDialog
 
-from ..service.ai_models import MODEL_SUGGESTIONS, MODEL_CATALOG_DATE
+from ..service.ai_models import MODEL_SUGGESTIONS, MODEL_CATALOG_DATE, OTHER_MODELS
 from ..translations import text as tr
 
 
@@ -16,11 +16,12 @@ class ModelInput(QComboBox):
     def set_provider(self, provider, text=''):
         blocker = QSignalBlocker(self)
         self.clear()
-        suggestions = MODEL_SUGGESTIONS.get(provider, ())
+        self.provider = provider
+        suggestions = MODEL_SUGGESTIONS.get(provider, ())[:10]
         for model in suggestions:
             self.addItem(model, model)
         if suggestions:
-            self.addItem(tr('其他（手动输入）'), None)
+            self.addItem(tr('其他（旧模型 / 手动输入）'), None)
         self.setCurrentIndex(-1)
         self.setEditText(text)
         self.lineEdit().setPlaceholderText(
@@ -30,6 +31,12 @@ class ModelInput(QComboBox):
 
     def choose_reference(self, index):
         if self.itemData(index) is None:
+            older = OTHER_MODELS.get(getattr(self, 'provider', 'custom'), ())
+            if older:
+                text, ok = QInputDialog.getItem(self, tr('其他模型'), tr('旧模型可能已停用，请确认服务支持；也可直接输入模型 ID：'), list(older), 0, True)
+                if ok:
+                    self.setText(text)
+                    return
             self.setCurrentIndex(-1)
             self.setEditText('')
             self.lineEdit().setFocus()

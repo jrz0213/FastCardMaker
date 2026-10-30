@@ -55,6 +55,8 @@ class TypeQueryDialog(QDialog):
             item.setCheckState(0, Qt.CheckState.Checked if model['id'] in (selected or set()) else Qt.CheckState.Unchecked)
             combo = QComboBox()
             choices, default = configurations(model['id'])
+            if not choices:
+                item.setForeground(0, self.palette().brush(QPalette.ColorGroup.Disabled, QPalette.ColorRole.Text))
             for index, value in enumerate(choices):
                 combo.addItem(value.get('name', tr('配置 %s') % (index + 1)) if isinstance(value, dict)
                               else tr('配置 %s') % (index + 1), index)

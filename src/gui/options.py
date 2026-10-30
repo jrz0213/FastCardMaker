@@ -245,10 +245,11 @@ class OptionsDialog(Dialog):
             self.removeTab(0, True)
 
         conf = self.controller.get_maps(self.current_model['id'])
-        maps_list = {'list': [conf], 'def': 0} if isinstance(conf, list) else conf
-        self.default_tab_index = maps_list.get('def', 0)
+        maps_list = {'list': [conf] if conf else [], 'def': 0} if isinstance(conf, list) else conf
+        default = maps_list.get('def', 0)
+        self.default_tab_index = default if type(default) is int and 0 <= default < len(maps_list['list']) else 0
         selected = maps_list.get('auto', -1)
-        self.auto_tab_index = selected if type(selected) is int and 0 <= selected < len(maps_list['list']) else 0
+        self.auto_tab_index = selected if type(selected) is int and 0 <= selected < len(maps_list['list']) else (0 if maps_list['list'] else -1)
 
         for maps in maps_list['list']:
             self.addTab(maps, False)
@@ -258,6 +259,7 @@ class OptionsDialog(Dialog):
         viewed = viewed if type(viewed) is int and 0 <= viewed < len(self.tabs) else self.default_tab_index
         self.changedTab(viewed)
         self.tab_widget.setCurrentIndex(viewed)
+        self.sync_configuration_selector()
 
         self._initial_mapping_values = deepcopy(self.mapping_values())
 
@@ -299,9 +301,10 @@ class OptionsDialog(Dialog):
 
         if forcus:
             self.tab_widget.setCurrentIndex(i)
+        self.sync_configuration_selector()
 
     def removeTab(self, i, forcus=False):
-        if not forcus and len(self.tabs) <= 1:
+        if not 0 <= i < len(self.tabs):
             return
         tab = self.tabs[i]
         del self.tabs[i]
@@ -319,6 +322,73 @@ class OptionsDialog(Dialog):
             self.auto_tab_index -= 1
         self.update_auto_stars()
         self.changedTab(self.tab_widget.currentIndex())
+        self.sync_configuration_selector()
+
+    def sync_configuration_selector(self):
+        if not hasattr(self, 'configuration_combo'):
+            return
+        blocker = QSignalBlocker(self.configuration_combo)
+        self.configuration_combo.clear()
+        for i in range(len(self.tabs)):
+            self.configuration_combo.addItem(self.tab_widget.tabText(i), i)
+        available = bool(self.tabs)
+        if not available:
+            self.configuration_combo.addItem(tr('没有配置'), None)
+        else:
+            self.configuration_combo.setCurrentIndex(self.tab_widget.currentIndex())
+        self.configuration_combo.setEnabled(available)
+        self.tab_widget.tabBar().hide()
+        for button in (self.configuration_star, self.rename_configuration_button, self.delete_configuration_button):
+            button.setEnabled(available)
+        selected_default = available and self.tab_widget.currentIndex() == self.default_tab_index
+        self.configuration_star.setChecked(selected_default)
+        self.configuration_star.setText('★' if selected_default else '☆')
+        self.copy_configuration_action.setEnabled(available)
+        self.auto_configuration_action.setEnabled(available)
+        self.auto_configuration_action.setChecked(available and self.tab_widget.currentIndex() == self.auto_tab_index)
+        blocker.unblock()
+
+    def select_configuration(self, index):
+        selected = self.configuration_combo.itemData(index)
+        if selected is not None and 0 <= selected < len(self.tabs):
+            self.tab_widget.setCurrentIndex(selected)
+
+    def set_default_configuration(self, *_):
+        index = self.tab_widget.currentIndex()
+        if not 0 <= index < len(self.tabs):
+            return
+        self.default_tab_index = index
+        self._is_dirty = True
+        self.update_auto_stars()
+        self.sync_configuration_selector()
+
+    def use_selected_for_automatic(self, *_):
+        index = self.tab_widget.currentIndex()
+        if 0 <= index < len(self.tabs):
+            self.toggle_auto_config(self.tabs[index])
+            self.sync_configuration_selector()
+
+    def copy_configuration(self):
+        index = self.tab_widget.currentIndex()
+        if not 0 <= index < len(self.tabs):
+            return
+        names = {self.tab_widget.tabText(i) for i in range(len(self.tabs))}
+        base = self.tab_widget.tabText(index) + tr('（副本）')
+        name, number = base, 2
+        while name in names:
+            name = base + ' ' + str(number)
+            number += 1
+        self.addTab({'name': name, 'fields': deepcopy(self.tabs[index].data)})
+
+    def rename_configuration(self):
+        index = self.tab_widget.currentIndex()
+        if not 0 <= index < len(self.tabs):
+            return
+        text, ok = QInputDialog.getText(self, tr('重命名配置'), tr('配置名称'), text=self.tab_widget.tabText(index))
+        if ok and text.strip():
+            self.tab_widget.setTabText(index, text.strip())
+            self._is_dirty = True
+            self.sync_configuration_selector()
 
     def toggle_auto_config(self, tab):
         index = self.tabs.index(tab)
@@ -337,6 +407,7 @@ class OptionsDialog(Dialog):
     def changedTab(self, i):
         if i >= 0 and i < len(self.tabs):
             self.tabs[i].build_layout()
+        self.sync_configuration_selector()
 
     def ai_options_changed(self):
         self._is_dirty = True
@@ -458,6 +529,8 @@ class OptionsDialog(Dialog):
             QMessageBox.warning(self, tr('AI 提示词错误'), str(error))
             return False
         self.controller.save_config(self.current_model, maps_list)
+        from .configuration_style import style_note_types
+        style_note_types(self.model_combo)
         for tab in self.tabs:
             tab.commit_mapping()
         self._is_dirty = False

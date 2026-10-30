@@ -19,7 +19,7 @@ def build_options_layout(self, s):
     top_layout = QHBoxLayout()
     top_layout.setContentsMargins(0, 0, 0, 5)
 
-    model_label = QLabel(tr("卡片类型:"))
+    model_label = QLabel(tr("笔记类型:"))
     model_font = QFont()
     model_font.setBold(True)
     model_label.setFont(model_font)
@@ -44,21 +44,40 @@ def build_options_layout(self, s):
         self.model_combo.addItem(m.name, userData=m.id)
         if self.current_model and m.id == self.current_model['id']:
             self.model_combo.setCurrentIndex(i)
-    data = getattr(config, 'data', {})
-    if isinstance(data, dict):
-        existing = {str(m.id) for m in sorted_models}
-        for mid in data:
-            if mid.isdigit() and mid not in existing:
-                metadata = data.get('note_type_meta', {}).get(mid, {})
-                self.model_combo.addItem(metadata.get('name', mid) + ' (' + tr('不可用') + ')', int(mid))
-                self.model_combo.model().item(self.model_combo.count() - 1).setEnabled(False)
-                if str(self.model_id) == mid:
-                    self.model_combo.setCurrentIndex(self.model_combo.count() - 1)
+    # Saved mappings may refer to deleted or other-profile note types.
+    # Keep those mappings in storage, but only offer live types here.
     self.model_combo.blockSignals(False)
+    from .configuration_style import style_note_types
+    style_note_types(self.model_combo)
     self.model_combo.currentIndexChanged.connect(self.on_model_combo_changed)
 
     top_layout.addWidget(model_label)
     top_layout.addWidget(self.model_combo)
+    top_layout.addWidget(QLabel(tr('字段配置')))
+    self.configuration_combo = QComboBox()
+    self.configuration_combo.setMinimumWidth(160)
+    self.configuration_combo.currentIndexChanged.connect(self.select_configuration)
+    top_layout.addWidget(self.configuration_combo, 1)
+    self.configuration_star = QToolButton()
+    self.configuration_star.setCheckable(True)
+    self.configuration_star.setToolTip(tr('设为当前笔记类型的默认配置'))
+    self.configuration_star.clicked.connect(self.set_default_configuration)
+    top_layout.addWidget(self.configuration_star)
+    more = QToolButton()
+    more.setText('⋯')
+    more.setToolTip(tr('配置操作'))
+    more.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+    menu = QMenu(more)
+    menu.addAction(tr('新增配置'), lambda: self.addTab())
+    self.rename_configuration_button = menu.addAction(tr('重命名配置'), self.rename_configuration)
+    self.copy_configuration_action = menu.addAction(tr('复制配置'), self.copy_configuration)
+    self.delete_configuration_button = menu.addAction(tr('删除配置'), lambda: self.removeTab(self.tab_widget.currentIndex()))
+    menu.addSeparator()
+    self.auto_configuration_action = menu.addAction(tr('用于自动运行'))
+    self.auto_configuration_action.setCheckable(True)
+    self.auto_configuration_action.triggered.connect(self.use_selected_for_automatic)
+    more.setMenu(menu)
+    top_layout.addWidget(more)
     top_layout.addStretch()
 
     top_btn_style = """
@@ -103,6 +122,7 @@ def build_options_layout(self, s):
         QTabWidget#fwqConfigurationTabs::pane { border: 1px solid palette(mid); }
     ''')
     self.tab_widget.setTabBar(CTabBar(parent_dialog=self))
+    self.tab_widget.tabBar().hide()
 
     tab_corner = QWidget()
     tab_corner_layout = QHBoxLayout(tab_corner)
@@ -116,7 +136,7 @@ def build_options_layout(self, s):
     tab_add_button.clicked.connect(self.addTab)
     tab_corner_layout.addWidget(tab_add_button)
 
-    self.tab_widget.setCornerWidget(tab_corner)
+    tab_corner.hide()
     self.tab_widget.tabCloseRequested.connect(self.removeTab)
     self.main_layout.addWidget(self.tab_widget, 1)
 
@@ -156,3 +176,5 @@ def build_options_layout(self, s):
 
     if self.current_model:
         self.build_tabs_layout()
+    else:
+        self.sync_configuration_selector()

@@ -388,6 +388,7 @@ class GuiRuntimeTests(unittest.TestCase):
                          'web': [{'title': 'Online', 'unique': 'online'}]}
         self.controller = Mock()
         self.controller.get_last_model_id.return_value = 1
+        self.host.config.get_maps = lambda key: self.controller.get_maps(key)
         self.controller.get_maps.side_effect = lambda key: {
             'list': [{'name': 'Primary', 'fields': deepcopy(self.maps)}], 'def': 0,
         }
@@ -1816,6 +1817,71 @@ class GuiRuntimeTests(unittest.TestCase):
         self.assertFalse(hasattr(dialog, 'temperature'))
         self.assertFalse(hasattr(dialog, 'reasoning'))
 
+    def test_configuration_default_is_independent_of_automatic_and_viewed(self):
+        dialog = self.dialog()
+        dialog.addTab({'name': 'Second', 'fields': deepcopy(self.maps)})
+        original_automatic = dialog.auto_tab_index
+        dialog.set_default_configuration()
+        self.assertEqual(dialog.default_tab_index, 1)
+        self.assertEqual(dialog.auto_tab_index, original_automatic)
+        dialog.configuration_combo.setCurrentIndex(0)
+        self.assertEqual(dialog.tab_widget.currentIndex(), 0)
+        self.assertEqual(dialog.default_tab_index, 1)
+        self.assertFalse(dialog.configuration_star.isChecked())
+        dialog.configuration_combo.setCurrentIndex(1)
+        dialog.use_selected_for_automatic()
+        self.assertEqual(dialog.auto_tab_index, 1)
+
+    def test_configuration_duplicate_keeps_original_and_default(self):
+        dialog = self.dialog()
+        before = deepcopy(dialog.tabs[0].data)
+        dialog.copy_configuration()
+        self.assertEqual(len(dialog.tabs), 2)
+        self.assertEqual(dialog.tabs[0].data, before)
+        self.assertEqual(dialog.tabs[1].data, before)
+        self.assertNotEqual(dialog.tab_widget.tabText(0), dialog.tab_widget.tabText(1))
+        self.assertEqual(dialog.default_tab_index, 0)
+
+    def test_note_creation_window_locks_destinations_and_filters_modes(self):
+        module = self.load('gui.note_creation')
+        model = deepcopy(self.model)
+        model['flds'].append({'name': 'Extra', 'ord': 2})
+        self.host.mw.col.models.get.return_value = model
+        self.host.mw.col.models.all.return_value = [model]
+        self.host.mw.col.decks = types.SimpleNamespace(
+            all_names_and_ids=lambda: [types.SimpleNamespace(id=1, name='Default'), types.SimpleNamespace(id=2, name='Filtered')],
+            get=lambda did: {'id': did, 'dyn': did == 2})
+        maps = deepcopy(self.maps) + [dict(fld_name='Extra', fld_ord=2, dict_unique='ai:test', ignore=False, ai_prompt='Explain {{Word}}')]
+        self.controller.get_maps.side_effect = lambda mid: {'list': [{'name': 'Primary', 'fields': maps}], 'def': 0}
+        owner = self.qt.QWidget()
+        self.widgets.append(owner)
+        owner.cards = [dict(id=1, topic='Topic', content='Body', created_at='now', version=1)]
+        owner.added_ids, owner.field_positions = set(), {}
+        owner.deck = self.qt.QLineEdit('Default')
+        owner.creation_mode = self.qt.QComboBox()
+        owner.creation_mode.addItem('Topics', 'topics')
+        owner.model_combo, owner.mapping_combo = self.qt.QComboBox(), self.qt.QComboBox()
+        owner.model_combo.addItem('Basic', 1)
+        owner.mapping_combo.addItem('Primary', 0)
+        owner.save_draft = Mock()
+        with patch.object(module, 'profile_choices', return_value=[{'title': 'AI test', 'unique': 'ai:test'}]):
+            dialog = module.NoteCreationDialog(owner, model, maps)
+        self.widgets.append(dialog)
+        dialog.show()
+        self.app.processEvents()
+        self.assertEqual(dialog.deck_choice.count(), 2)  # ordinary deck + add action
+        self.assertEqual(dialog.execution_mode.currentData(), 'ai')
+        self.assertFalse(dialog.rows[0][1].isEnabled())
+        self.assertFalse(dialog.rows[1][1].isEnabled())
+        self.assertEqual({dialog.table.rowHeight(i) for i in range(3)}, {62})
+        dialog.content_target.setCurrentText('Word')
+        self.assertTrue(dialog.rows[1][1].isEnabled())
+        self.assertIn('当前模式不执行', dialog.row_views[1][3].text())
+        dialog.execution_mode.setCurrentIndex(1)
+        self.assertIn('词典数据项', dialog.row_views[1][3].text())
+        self.assertIn('当前模式不执行', dialog.row_views[2][3].text())
+        self.assertFalse(self.errors, self.errors)
+
     def test_add_remove_rename_and_default_tab(self):
         dialog = self.dialog()
         dialog.addTab({'name': 'Second', 'fields': deepcopy(self.maps)})
@@ -1829,7 +1895,8 @@ class GuiRuntimeTests(unittest.TestCase):
         self.assertEqual(dialog.default_tab_index, 0)
         self.assertEqual(dialog.tab_widget.tabText(0), 'Renamed')
         dialog.removeTab(0)
-        self.assertEqual(dialog.tab_widget.count(), 1)
+        self.assertEqual(dialog.tab_widget.count(), 0)
+        self.assertFalse(dialog.configuration_combo.isEnabled())
         self.assertFalse(self.errors, self.errors)
 
     def test_status_refresh_preserves_field_mapping_and_dirty_flag(self):
@@ -1981,7 +2048,7 @@ class GuiRuntimeTests(unittest.TestCase):
             common.config_menu()
             self.assertEqual([a.text() for a in root.menuBar().actions()], ['帮助', 'FastCM'])
             menu = root.menuBar().actions()[-1].menu()
-            self.assertEqual([a.text() for a in menu.actions()], ['全类型查询', 'OPTIONS', '后台任务：暂无任务', 'ABOUT'])
+            self.assertEqual([a.text() for a in menu.actions() if not a.isSeparator()], ['全类型查询', 'AI 批量制卡', 'OPTIONS', '后台任务：暂无任务', 'ABOUT'])
             menu.actions()[0].trigger()
             show.assert_called_once_with()
             menu.actions()[-1].trigger()

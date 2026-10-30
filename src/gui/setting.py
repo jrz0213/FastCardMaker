@@ -180,7 +180,7 @@ class SettingDialog(Dialog):
             ('check_force_update', _('FORCE_UPDATE'), 'force_update', False),
             ('check_ignore_accents', _('IGNORE_ACCENTS'), 'ignore_accents', False),
             ('check_ighore_mdx_wordcase', _('IGNORE_MDX_WORDCASE'), 'ignore_mdx_wordcase', False),
-            ('check_fuzzy_match', tr('媒体资源模糊匹配 (Fuzzy Match)'), 'fuzzy_match', True)):
+            ('check_fuzzy_match', tr('媒体资源模糊匹配 (Fuzzy Match)'), 'fuzzy_match', False)):
             box = QCheckBox(label)
             box.setChecked(bool(getattr(config, key, default)))
             setattr(self, attr, box)
@@ -249,7 +249,7 @@ class SettingDialog(Dialog):
         self.language_combo.setCurrentIndex(0)
         self.ai_send_mode.setCurrentIndex(0)
         self.ai_rate.setValue(29)
-        self.ai_timeout.setValue(90)
+        self.ai_timeout.setValue(600)
         self.ai_connect_timeout.setValue(10)
         self.ai_retries.setValue(2)
         self.ai_markdown.setChecked(True)
@@ -263,7 +263,7 @@ class SettingDialog(Dialog):
             self.auto_models.item(i).setCheckState(Qt.CheckState.Unchecked)
         for box in (self.check_force_update, self.check_ignore_accents, self.check_ighore_mdx_wordcase):
             box.setChecked(False)
-        self.check_fuzzy_match.setChecked(True)
+        self.check_fuzzy_match.setChecked(False)
         self.input_thread_number.setValue(16)
         self.input_cloze_str.setText('{{c1::%s}}')
         self.input_sound_str.setText('[sound:{0}]')

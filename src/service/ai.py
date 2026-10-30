@@ -3,6 +3,8 @@
 from ..translations import text as tr
 
 import re
+import json
+from contextvars import ContextVar
 from copy import deepcopy
 from dataclasses import dataclass, field
 from html import unescape
@@ -22,6 +24,8 @@ from .ai_support.conversation import ADAPTERS
 from .ai_support.batching import OUTPUT_INSTRUCTIONS, build_prompt, parse_fields
 
 _requests_limit = AIRequestLimiter()
+_on_delta = ContextVar('ai_text_delta', default=None)
+_response_ready = ContextVar('ai_response_ready', default=None)
 
 
 @dataclass(frozen=True)
@@ -49,11 +53,22 @@ def _send(address, headers, payload, profile, cancelled):
                 raise AIError(tr('AI 任务已取消。'), code='cancelled')
             diagnostics.dispatched(attempt + 1)
             response = requests.post(address, headers=headers, json=payload,
-                                     timeout=(profile.get('connect_timeout', 10), profile['timeout']), allow_redirects=False)
+                                     timeout=(profile.get('connect_timeout', 10), profile.get('timeout', 600)),
+                                     allow_redirects=False, stream=bool(payload.get('stream')))
+            if _response_ready.get():
+                _response_ready.get()(response)
             delay = retry_delay(response, attempt, retries)
             if delay is not None:
                 diagnostics.retrying(response.status_code, delay, attempt + 2)
                 _requests_limit.defer(delay)
+                response.close()
+            elif response.status_code == 200 and payload.get('stream') and 'text/event-stream' in str(getattr(response, 'headers', {}).get('Content-Type', '')):
+                from .ai_support.streaming import collect
+                def stream_error(message, code):
+                    return AIError(tr(message), code=code)
+                data = collect(response, protocol(profile), stream_error, cancelled, _on_delta.get())
+                response._content = json.dumps(data).encode('utf-8')
+                response._content_consumed = True
         finally:
             _requests_limit.release()
         if delay is None:
@@ -66,6 +81,7 @@ class AIError(ValueError):
     def __init__(self, message, code='ai_error'):
         super().__init__(message)
         self.code = code
+        self.safe_message = True
 
 
 def render_prompt(template, fields):
@@ -99,40 +115,56 @@ def request_payload(profile, prompt, output_instructions='', history=None):
         if skill:
             data['system_instruction'] = skill
     data.update(parameters_for(profile))
+    data.setdefault('stream', True)
+    if 'stream' not in profile.get('parameters', {}):
+        data['stream'] = True
     return data
 
 
 def response_text(data, mode):
     if not isinstance(data, dict):
-        raise AIError(tr('AI 返回格式与所选接口模式不一致。'))
+        raise AIError(tr('AI 返回格式与所选接口模式不一致。'), code='response_format')
     if mode == 'responses':
         if data.get('error') or data.get('status') in ('failed', 'incomplete', 'cancelled', 'queued', 'in_progress'):
-            raise AIError(tr('AI 回复未完整生成，请检查回复长度、模型或服务状态。'))
+            reason = data.get('incomplete_details', {})
+            reason = reason.get('reason') if isinstance(reason, dict) else None
+            message = tr('AI 回复未完整生成，请检查回复长度、模型或服务状态。')
+            if reason == 'max_output_tokens':
+                message = tr('AI 回复达到输出长度上限，请增加最大输出 Token 数。')
+            elif reason == 'content_filter':
+                message = tr('AI 回复被服务的内容过滤器拦截。')
+            raise AIError(message, code='incomplete_response')
         text = '\n'.join(part['text'] for item in data.get('output', [])
                          if item.get('type') == 'message' and item.get('role', 'assistant') == 'assistant'
                          for part in item.get('content', [])
                          if part.get('type') == 'output_text' and isinstance(part.get('text'), str))
     elif mode == 'interactions':
         if data.get('error') or data.get('status') != 'completed':
-            raise AIError(tr('AI 回复未完整生成，请检查回复长度、模型或服务状态。'))
+            raise AIError(tr('AI 回复未完整生成，请检查回复长度、模型或服务状态。'), code='incomplete_response')
         text = '\n'.join(part['text'] for step in data.get('steps', [])
                          if step.get('type') == 'model_output'
                          for part in step.get('content', [])
                          if part.get('type') == 'text' and isinstance(part.get('text'), str))
     elif mode == 'messages':
+        if data.get('stop_reason') == 'max_tokens':
+            raise AIError(tr('AI 回复达到输出长度上限，请增加最大输出 Token 数。'), code='output_limit')
         if data.get('type') != 'message' or data.get('stop_reason') not in ('end_turn', 'stop_sequence'):
-            raise AIError(tr('AI 回复为空或未完整生成。'))
+            raise AIError(tr('AI 回复为空或未完整生成。'), code='incomplete_response')
         text = '\n'.join(part['text'] for part in data.get('content', [])
                          if part.get('type') == 'text' and isinstance(part.get('text'), str))
     else:
         choices = data.get('choices', [])
-        if not choices or choices[0].get('finish_reason') in ('length', 'content_filter'):
-            raise AIError(tr('AI 回复为空或未完整生成。'))
+        if choices and choices[0].get('finish_reason') == 'length':
+            raise AIError(tr('AI 回复达到输出长度上限，请增加最大输出 Token 数。'), code='output_limit')
+        if choices and choices[0].get('finish_reason') == 'content_filter':
+            raise AIError(tr('AI 回复被服务的内容过滤器拦截。'), code='content_filter')
+        if not choices:
+            raise AIError(tr('AI 回复为空或未完整生成。'), code='empty_response')
         content = choices[0].get('message', {}).get('content', '')
         text = content if isinstance(content, str) else '\n'.join(
             part.get('text', '') for part in (content or []) if part.get('type') == 'text')
     if not text.strip():
-        raise AIError(tr('AI 未返回可写入的正文。'))
+        raise AIError(tr('AI 未返回可写入的正文。'), code='empty_response')
     return text
 
 
@@ -151,6 +183,7 @@ def _query_ai(unique, template, fields, cancelled=None, connection=None):
     connection = connection or snapshot_connection(unique)
     prompt = render_prompt(template, fields)
     text = _request_text(unique, prompt, cancelled, connection=connection)
+    diagnostics.stage('render')
     return QueryResult(result=render_output(text, connection.markdown, connection.classes))
 
 
@@ -161,10 +194,12 @@ def query_ai_many(unique, templates, fields, cancelled=None, connection=None):
     try:
         prompt = build_prompt(templates, fields, render_prompt)
         text = _request_text(unique, prompt, cancelled, OUTPUT_INSTRUCTIONS, connection)
+        diagnostics.stage('parse')
         try:
             values = parse_fields(text, templates)
         except ValueError as error:
             raise AIError(str(error), code='structured_output') from None
+        diagnostics.stage('render')
         result = {name: QueryResult(result=render_output(value, connection.markdown, connection.classes)) for name, value in values.items()}
     except Exception as error:
         diagnostics.finished(start, error=error)
@@ -173,15 +208,20 @@ def query_ai_many(unique, templates, fields, cancelled=None, connection=None):
     return result
 
 
-def request_ai_text(unique, prompt, instructions, cancelled=None, connection=None, history=None):
+def request_ai_text(unique, prompt, instructions, cancelled=None, connection=None, history=None, on_delta=None, on_response=None):
     """Send literal source data without field interpolation or Markdown conversion."""
     start = diagnostics.started((connection.profile if connection else profile_for(unique)) or {})
+    token = _on_delta.set(on_delta)
+    response_token = _response_ready.set(on_response)
     try:
         result = (_request_text(unique, prompt, cancelled, instructions, connection, history=history)
                   if history else _request_text(unique, prompt, cancelled, instructions, connection))
     except Exception as error:
         diagnostics.finished(start, error=error)
         raise
+    finally:
+        _on_delta.reset(token)
+        _response_ready.reset(response_token)
     diagnostics.finished(start, result=QueryResult(result=result))
     return result
 
@@ -190,7 +230,10 @@ def _request_text(unique, prompt, cancelled=None, output_instructions='', connec
     profile = connection.profile if connection is not None else profile_for(unique)
     if profile is None:
         raise AIError(tr('AI 配置已删除，请重新选择。'))
-    validate_profile(profile)
+    try:
+        validate_profile(profile)
+    except ValueError as error:
+        raise AIError(str(error), code='configuration') from None
     key = connection.key if connection is not None else session_key(profile['id'])
     if not key:
         raise AIError(tr('未填写 API Key，请打开 AI 设置。'), code='missing_key')
@@ -203,7 +246,9 @@ def _request_text(unique, prompt, cancelled=None, output_instructions='', connec
         headers = {'x-api-key': key, 'anthropic-version': '2023-06-01', 'Content-Type': 'application/json'}
     payload = request_payload(profile, prompt, output_instructions, history=history)
     try:
+        diagnostics.stage('send')
         response = _send(address, headers, payload, profile, cancelled)
+        diagnostics.stage('response')
         if response.status_code != 200:
             status = response.status_code
             messages = {
@@ -217,9 +262,13 @@ def _request_text(unique, prompt, cancelled=None, output_instructions='', connec
                 message = tr('AI 服务暂时异常（HTTP %s），请稍后重试。') % status
             else:
                 message = tr('AI 请求失败（HTTP %s），请检查地址、密钥、模型和参数。') % status
+            metadata = diagnostics.response_metadata(response, secrets=(key,))
+            if metadata:
+                message += ' (' + metadata + ')'
             raise AIError(message, code='http_%s' % status)
         data = response.json()
         diagnostics.usage(data, mode)
+        diagnostics.stage('parse')
         text = response_text(data, mode)
     except requests.exceptions.ConnectTimeout:
         raise AIError(tr('AI 连接超时，请检查网络、代理和 API 地址，或增加连接超时。'), code='connect_timeout') from None
@@ -227,12 +276,16 @@ def _request_text(unique, prompt, cancelled=None, output_instructions='', connec
         raise AIError(tr('等待 AI 回复超时。可增加请求超时，或减少附件和历史消息后重试；本次未自动重发。'), code='read_timeout') from None
     except requests.exceptions.Timeout:
         raise AIError(tr('AI 请求超时，请检查网络或增加请求超时；本次未自动重发。'), code='timeout') from None
-    except requests.RequestException:
+    except requests.RequestException as error:
+        if type(error).__name__ == 'ProxyError':
+            raise AIError(tr('AI 代理连接失败，请检查代理地址、端口和代理服务。'), code='proxy') from None
+        if type(error).__name__ == 'SSLError':
+            raise AIError(tr('AI 安全连接失败，请检查证书、系统时间或代理证书。'), code='tls') from None
         raise AIError(tr('AI 请求超时或连接失败，请检查网络和 API 地址。'), code='connection') from None
     except (KeyError, TypeError, AttributeError):
-        raise AIError(tr('AI 返回格式与所选接口模式不一致。')) from None
+        raise AIError(tr('AI 返回格式与所选接口模式不一致。'), code='response_format') from None
     except ValueError as error:
         if isinstance(error, AIError):
             raise
-        raise AIError(tr('AI 返回了无效的数据。')) from None
+        raise AIError(tr('AI 返回了无效的数据。'), code='invalid_json') from None
     return text
